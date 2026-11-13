@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vietmap Pro Telegram Mini App</title>
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-webapp.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Mapbox GL JS CSS & JS -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        #map { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        .hud-overlay { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 10; pointer-events: none; }
+        .hud-interactive { pointer-events: auto; }
+        .user-marker { width: 24px; height: 24px; background: #3b82f6; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 12px rgba(59, 130, 246, 0.9); }
+        .warning-popup { animation: pulseWarning 1s infinite alternate; }
+        @keyframes pulseWarning {
+            0% { transform: scale(1); box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); }
+            100% { transform: scale(1.03); box-shadow: 0 0 25px rgba(239, 68, 68, 0.9); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white">
+
+    <!-- HUD Giao diện trên cùng -->
+    <div class="hud-overlay flex flex-col gap-2">
+        <div class="flex justify-between items-center bg-slate-900/85 backdrop-blur-md p-3 rounded-2xl border border-slate-700 hud-interactive shadow-lg">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white px-3 py-1 rounded-xl text-2xl font-black min-w-[70px] text-center" id="current-speed">0</div>
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Tốc độ xe</span>
+                    <span class="text-xs font-semibold text-slate-200">Km/h</span>
+                </div>
+            </div>
+            
+            <!-- Biển giới hạn tốc độ -->
+            <div id="speed-limit-sign" class="hidden flex items-center justify-center w-12 h-12 bg-white border-4 border-red-600 rounded-full text-slate-900 font-black text-sm shadow-md">
+                50
+            </div>
+
+            <div class="flex flex-col items-end gap-1">
+                <div id="gps-status" class="px-2.5 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full text-[10px] font-semibold animate-pulse">
+                    Đang tìm GPS...
+                </div>
+            </div>
+        </div>
+
+        <!-- Thanh tìm kiếm & Chỉ đường -->
+        <div class="flex gap-2 hud-interactive">
+            <input type="text" id="destination-input" placeholder="Nhập điểm đến (Ví dụ: Vinh, Nghệ An)..." class="flex-1 bg-slate-900/95 backdrop-blur-md border border-slate-700 px-4 py-2.5 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 shadow-md">
+            <button onclick="searchAndRoute()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all">
+                Đi
+            </button>
+        </div>
+    </div>
+
+    <!-- Cảnh báo khẩn cấp giữa màn hình khi tới gần camera/tốc độ -->
+    <div id="alert-banner" class="absolute top-36 left-4 right-4 z-20 hidden pointer-events-none flex justify-center">
+        <div class="warning-popup bg-red-600 text-white px-5 py-3 rounded-2xl shadow-2xl border-2 border-white flex items-center gap-3 max-w-md w-full">
+            <svg class="w-8 h-8 shrink-0 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <div class="flex flex-col">
+                <span class="text-xs uppercase font-bold text-red-100 tracking-wider">Cảnh báo giao thông</span>
+                <span id="alert-text" class="text-sm font-extrabold">Phía trước có camera phạt nguội!</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Thanh công cụ dưới màn hình (Báo cáo cộng đồng) -->
+    <div class="absolute bottom-6 left-4 right-4 z-10 flex justify-between gap-2 hud-interactive">
+        <button onclick="reportIssue('camera')" class="flex-1 bg-slate-800/90 hover:bg-slate-700 backdrop-blur-md border border-slate-700 py-2.5 px-3 rounded-xl text-xs font-semibold shadow-lg text-amber-400 flex items-center justify-center gap-1.5 transition-all">
+            📷 Báo Phạt Nguội
+        </button>
+        <button onclick="reportIssue('police')" class="flex-1 bg-slate-800/90 hover:bg-slate-700 backdrop-blur-md border border-slate-700 py-2.5 px-3 rounded-xl text-xs font-semibold shadow-lg text-rose-400 flex items-center justify-center gap-1.5 transition-all">
+            🚨 Báo Tốc Độ
+        </button>
+        <button onclick="reportIssue('traffic')" class="flex-1 bg-slate-800/90 hover:bg-slate-700 backdrop-blur-md border border-slate-700 py-2.5 px-3 rounded-xl text-xs font-semibold shadow-lg text-blue-400 flex items-center justify-center gap-1.5 transition-all">
+            🚗 Báo Kẹt Xe
+        </button>
+    </div>
+
+    <!-- Bản đồ Mapbox -->
+    <div id="map"></div>
+
+    <script>
+        // 1. Khởi tạo Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        if (tg.setHeaderColor) tg.setHeaderColor('#0f172a');
+
+        // Token Mapbox (Thay thế bằng Mapbox Token thực tế của bạn)
+        mapboxgl.accessToken = 'pk.eyJ1IjoiZGVtby11c2VyIiwiYSI6ImNsbno5cXRxeDBha3Aya3FpYjF6cjR3Z2MifQ.demo';
+
+        // Tọa độ mặc định (Thành phố Vinh, Nghệ An)
+        const defaultCenter = [105.6828, 18.6796];
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/navigation-night-v1',
+            center: defaultCenter,
+            zoom: 16,
+            pitch: 50,
+            bearing: 0
+        });
+
+        let userMarker = null;
+        let lastCoords = null;
+        let lastTime = null;
+
+        // Dữ liệu mẫu Cảnh báo giao thông (Phạt nguội, Tốc độ) tại Vinh
+        const warningDatabase = [
+            { id: 1, lng: 105.6850, lat: 18.6820, type: 'camera', title: 'Camera phạt nguội vượt đèn đỏ', speedLimit: 50 },
+            { id: 2, lng: 105.6780, lat: 18.6750, type: 'speed', title: 'Khu vực giới hạn tốc độ 40km/h', speedLimit: 40 },
+            { id: 3, lng: 105.6900, lat: 18.6700, type: 'camera', title: 'Camera bắn tốc độ đoạn đường cong', speedLimit: 60 }
+        ];
+
+        // Tạo Marker hiển thị vị trí xe
+        const el = document.createElement('div');
+        el.className = 'user-marker';
+
+        map.on('load', () => {
+            userMarker = new mapboxgl.Marker(el)
+                .setLngLat(defaultCenter)
+                .addTo(map);
+
+            // Hiển thị các điểm cảnh báo lên bản đồ
+            addWarningMarkersToMap();
+
+            // Kích hoạt định vị GPS
+            startGPSRealtimeTracking();
+        });
+
+        function addWarningMarkersToMap() {
+            warningDatabase.forEach(item => {
+                const markerEl = document.createElement('div');
+                markerEl.className = 'w-6 h-6 bg-red-500/80 border-2 border-white rounded-full flex items-center justify-center text-xs shadow-md';
+                markerEl.innerHTML = item.type === 'camera' ? '📷' : '⚡';
+
+                new mapboxgl.Marker(markerEl)
+                    .setLngLat([item.lng, item.lat])
+                    .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(`<b class="text-slate-900">${item.title}</b><br><span class="text-xs text-slate-700">Tốc độ tối đa: ${item.speedLimit} km/h</span>`))
+                    .addTo(map);
+            });
+        }
+
+        // 2. Định vị GPS & Logic Quét Cảnh báo (Geofencing)
+        function startGPSRealtimeTracking() {
+            if (!navigator.geolocation) {
+                alert("Trình duyệt không hỗ trợ GPS.");
+                return;
+            }
+
+            const gpsStatusEl = document.getElementById('gps-status');
+            const speedEl = document.getElementById('current-speed');
+            const speedLimitSign = document.getElementById('speed-limit-sign');
+            const alertBanner = document.getElementById('alert-banner');
+            const alertText = document.getElementById('alert-text');
+
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude, speed, accuracy } = position.coords;
+                    const currentTime = position.timestamp;
+                    const newLngLat = [longitude, latitude];
+
+                    gpsStatusEl.textContent = `GPS Chuẩn (${Math.round(accuracy)}m)`;
+                    gpsStatusEl.className = "px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-semibold";
+
+                    // Tính tốc độ
+                    let currentSpeedKmh = 0;
+                    if (speed !== null && speed >= 0) {
+                        currentSpeedKmh = Math.round(speed * 3.6);
+                    } else if (lastCoords && lastTime) {
+                        const distanceMeters = calculateDistance(lastCoords[1], lastCoords[0], latitude, longitude);
+                        const timeHours = (currentTime - lastTime) / 3600000;
+                        if (timeHours > 0) currentSpeedKmh = Math.round((distanceMeters / 1000) / timeHours);
+                    }
+                    if (currentSpeedKmh > 160) currentSpeedKmh = 0;
+                    speedEl.textContent = currentSpeedKmh;
+
+                    // Di chuyển marker trên bản đồ
+                    if (userMarker) userMarker.setLngLat(newLngLat);
+
+                    // Bám theo xe tự động
+                    map.easeTo({
+                        center: newLngLat,
+                        bearing: map.getBearing(),
+                        duration: 800,
+                        easing: (t) => t
+                    });
+
+                    // Kiểm tra Geofencing quét cảnh báo xung quanh (Bán kính 250m)
+                    let nearbyWarning = null;
+                    warningDatabase.forEach(item => {
+                        const dist = calculateDistance(latitude, longitude, item.lat, item.lng);
+                        if (dist <= 250) {
+                            nearbyWarning = item;
+                        }
+                    });
+
+                    if (nearbyWarning) {
+                        alertBanner.classList.remove('hidden');
+                        alertText.textContent = `${nearbyWarning.title} (Cách ${Math.round(calculateDistance(latitude, longitude, nearbyWarning.lat, nearbyWarning.lng))}m)`;
+                        speedLimitSign.classList.remove('hidden');
+                        speedLimitSign.textContent = nearbyWarning.speedLimit;
+
+                        // Rung phản hồi & Phát âm thanh cảnh báo tiếng Việt
+                        if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+                        speakWarning(`Chú ý, phía trước có ${nearbyWarning.title}`);
+                    } else {
+                        alertBanner.classList.add('hidden');
+                        speedLimitSign.classList.add('hidden');
+                    }
+
+                    lastCoords = newLngLat;
+                    lastTime = currentTime;
+                },
+                (error) => {
+                    gpsStatusEl.textContent = "Mất tín hiệu GPS";
+                    gpsStatusEl.className = "px-2.5 py-1 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full text-[10px] font-semibold";
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
+
+        // 3. Hàm phát âm thanh cảnh báo bằng Web Speech API
+        let lastSpokenTime = 0;
+        function speakWarning(text) {
+            const now = Date.now();
+            if (now - lastSpokenTime < 15000) return; // Tránh lặp âm thanh liên tục mỗi giây
+            lastSpokenTime = now;
+
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'vi-VN';
+                utterance.rate = 1.0;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // 4. Hàm tính khoảng cách Haversine (mét)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+        }
+
+        // 5. Chức năng tìm đường & vẽ tuyến đường (Routing) đơn giản qua Mapbox Directions API
+        async function searchAndRoute() {
+            const query = document.getElementById('destination-input').value;
+            if (!query) return;
+
+            try {
+                // Geocoding tìm tọa độ điểm đến
+                const geoRes = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxgl.accessToken}&country=vn&limit=1`);
+                const geoData = await geoRes.json();
+                
+                if (!geoData.features || geoData.features.length === 0) {
+                    alert("Không tìm thấy địa điểm này!");
+                    return;
+                }
+
+                const destCoord = geoData.features[0].center;
+                const currentCoord = lastCoords || defaultCenter;
+
+                // Gọi Mapbox Directions API lấy vạch lộ trình
+                const dirRes = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${currentCoord[0]},${currentCoord[1]};${destCoord[0]},${destCoord[1]}?geometries=geojson&access_token=${mapboxgl.accessToken}`);
+                const dirData = await dirRes.json();
+
+                if (dirData.routes && dirData.routes.length > 0) {
+                    const routeGeoJSON = dirData.routes[0].geometry;
+
+                    if (map.getSource('route')) {
+                        map.getSource('route').setData(routeGeoJSON);
+                    } else {
+                        map.addSource('route', { type: 'geojson', data: routeGeoJSON });
+                        map.addLayer({
+                            id: 'route',
+                            type: 'line',
+                            source: 'route',
+                            layout: { 'line-join': 'round', 'line-cap': 'round' },
+                            paint: { 'line-color': '#3b82f6', 'line-width': 6, 'line-opacity': 0.85 }
+                        });
+                    }
+
+                    // Zoom vừa vặn lộ trình
+                    const coordinates = routeGeoJSON.coordinates;
+                    const bounds = coordinates.reduce((bounds, coord) => bounds.extend(coord), new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]));
+                    map.fitBounds(bounds, { padding: 80 });
+                    if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                }
+            } catch (err) {
+                console.error("Lỗi tìm đường:", err);
+                alert("Không thể kết nối dịch vụ chỉ đường.");
+            }
+        }
+
+        // 6. Báo cáo giao thông cộng đồng
+        function reportIssue(type) {
+            if (!lastCoords) {
+                alert("Chưa xác định được vị trí GPS hiện tại của bạn.");
+                return;
+            }
+            const labels = { camera: 'Phạt nguội', police: 'Bắn tốc độ', traffic: 'Kẹt xe' };
+            if (confirm(`Xác nhận báo cáo điểm ${labels[type]} tại vị trí hiện tại của bạn?`)) {
+                warningDatabase.push({
+                    id: Date.now(),
+                    lng: lastCoords[0],
+                    lat: lastCoords[1],
+                    type: type,
+                    title: `Báo cáo mới: ${labels[type]}`,
+                    speedLimit: 50
+                });
+                addWarningMarkersToMap();
+                if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                alert("Cảm ơn bạn đã đóng góp thông tin cộng đồng!");
+            }
+        }
+    </script>
+</body>
+</html>
