@@ -1,0 +1,2635 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vietmap Live Pro - All-in-One Telegram Mini App</title>
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-webapp.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet 1.9.4 CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #070b14;
+            color: #f8fafc;
+        }
+
+        /* Khung chứa bản đồ hỗ trợ chuyển đổi góc nhìn 2D / 3D Vietmap Live Pro */
+        #map-perspective-wrapper {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+            background: #0b1120;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            inset: 0;
+            transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+            transform-origin: 50% 68%;
+        }
+        .view-3d-active #map {
+            transform: perspective(880px) rotateX(28deg) scale(1.18);
+        }
+
+        /* Cụm Marker Xe Điều Hướng 3D Vietmap + Chùm Radar + Vòng Sóng */
+        .vietmap-vehicle-root {
+            position: relative;
+            width: 76px;
+            height: 76px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .vehicle-pulse-ring {
+            position: absolute;
+            width: 58px;
+            height: 58px;
+            border-radius: 50%;
+            background: rgba(14, 165, 233, 0.24);
+            border: 2px solid rgba(56, 189, 248, 0.75);
+            animation: radarWave 1.65s infinite ease-out;
+        }
+        @keyframes radarWave {
+            0% { transform: scale(0.48); opacity: 1; }
+            100% { transform: scale(1.92); opacity: 0; }
+        }
+        .vehicle-heading-rotator {
+            position: absolute;
+            width: 72px;
+            height: 72px;
+            will-change: transform;
+        }
+        .vehicle-speed-tag {
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0284c7;
+            color: #ffffff;
+            font-size: 9px;
+            font-weight: 900;
+            padding: 1.5px 7px;
+            border-radius: 9999px;
+            border: 1.5px solid #ffffff;
+            white-space: nowrap;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.8);
+            letter-spacing: 0.02em;
+        }
+        .vehicle-speed-tag.is-overspeed {
+            background: #dc2626;
+            border-color: #fde047;
+        }
+
+        /* Biển báo giao thông QCVN 41:2019 trên bản đồ */
+        .qcvn-map-sign {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.78));
+            transition: transform 0.18s ease;
+        }
+        .qcvn-map-sign:hover {
+            transform: scale(1.16) translateY(-3px);
+            z-index: 9999 !important;
+        }
+        .qcvn-sign-pole {
+            width: 3px;
+            height: 7px;
+            background: linear-gradient(to bottom, #f1f5f9, #475569);
+        }
+        .qcvn-sign-caption {
+            margin-top: 1px;
+            background: rgba(15, 23, 42, 0.94);
+            color: #f8fafc;
+            font-size: 9px;
+            font-weight: 800;
+            padding: 1px 5px;
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            white-space: nowrap;
+        }
+
+        /* Hiệu ứng chớp đỏ 4 cạnh màn hình khi quá tốc độ */
+        @keyframes redVignettePulse {
+            0%, 100% {
+                box-shadow: inset 0 0 55px 18px rgba(220, 38, 38, 0.9), inset 0 0 120px 32px rgba(239, 68, 68, 0.5);
+                opacity: 1;
+            }
+            50% {
+                box-shadow: inset 0 0 18px 6px rgba(220, 38, 38, 0.25);
+                opacity: 0.35;
+            }
+        }
+        .vignette-overspeed-active {
+            animation: redVignettePulse 0.68s infinite ease-in-out;
+        }
+
+        /* Hiệu ứng nhấp nháy hộp đồng hồ & banner khi vượt tốc độ */
+        @keyframes overspeedBoxPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7), 0 0 24px rgba(239, 68, 68, 0.9); }
+            50% { transform: scale(1.03); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0), 0 0 34px rgba(239, 68, 68, 1); }
+        }
+        .overspeed-glow-pulse {
+            animation: overspeedBoxPulse 0.8s infinite;
+        }
+
+        /* Hiệu ứng rung biển báo tốc độ P.127 khi chạy quá tốc độ */
+        @keyframes speedSignShake {
+            0%, 100% { transform: scale(1.1) rotate(0deg); box-shadow: 0 0 22px rgba(239, 68, 68, 0.95); }
+            25% { transform: scale(1.15) rotate(-5deg); }
+            75% { transform: scale(1.15) rotate(5deg); }
+        }
+        .speed-sign-shaking {
+            animation: speedSignShake 0.52s infinite;
+        }
+
+        /* Hiệu ứng viền phát sáng khi AI tự động nhận diện biển báo mới */
+        @keyframes aiHighlightGlow {
+            0%, 100% { border-color: rgba(52, 211, 153, 0.95); box-shadow: 0 0 18px rgba(16, 185, 129, 0.75); }
+            50% { border-color: rgba(56, 189, 248, 0.95); box-shadow: 0 0 8px rgba(56, 189, 248, 0.35); }
+        }
+        .ai-badge-highlight {
+            animation: aiHighlightGlow 1.1s infinite;
+        }
+
+        /* Tuỳ biến thanh cuộn gọn nhẹ */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Tuỳ biến Popup Leaflet chuẩn giao diện tối */
+        .leaflet-popup-content-wrapper {
+            background: #0f172a !important;
+            color: #f8fafc !important;
+            border: 1px solid #334155;
+            border-radius: 16px !important;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.85) !important;
+            padding: 2px !important;
+        }
+        .leaflet-popup-tip { background: #0f172a !important; }
+        .leaflet-popup-content { margin: 10px 12px !important; }
+    </style>
+</head>
+<body class="h-full w-full overflow-hidden select-none">
+
+    <!-- ================= 1. VIỀN ĐỎ CHỚP NHÁY 4 CẠNH MÀN HÌNH KHI QUÁ TỐC ĐỘ ================= -->
+    <div id="overspeed-vignette" class="fixed inset-0 z-[1040] pointer-events-none hidden vignette-overspeed-active"></div>
+
+    <!-- ================= 2. BẢN ĐỒ TƯƠNG TÁC (HỖ TRỢ GÓC NHÌN 2D / 3D) ================= -->
+    <div id="map-perspective-wrapper">
+        <div id="map"></div>
+    </div>
+
+    <!-- ================= 3. TOP HUD & NAVIGATION OVERLAY ================= -->
+    <header class="fixed top-0 left-0 right-0 z-[1000] p-2 pointer-events-none flex flex-col gap-1.5">
+
+        <!-- HÀNG 1: ĐỒNG HỒ TỐC ĐỘ 3 CẤP + BIỂN P.127 AI TỰ NHẬN + HỘP RADAR BIỂN SẮP TỚI -->
+        <div class="grid grid-cols-12 gap-1.5 items-stretch pointer-events-auto">
+
+            <!-- Cột 1 (4/12): Speedometer Box 3 trạng thái -->
+            <div id="hud-speedometer-card" class="col-span-4 bg-slate-900/95 backdrop-blur-md border-2 border-emerald-500/70 rounded-2xl px-2.5 py-2 shadow-2xl flex flex-col justify-between relative overflow-hidden transition-all duration-200">
+                <div class="flex items-center justify-between gap-1">
+                    <span class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Tốc độ</span>
+                    <span id="hud-safety-badge" class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                        AN TOÀN
+                    </span>
+                </div>
+                <div class="flex items-baseline gap-1 my-0.5">
+                    <span id="hud-speed-number" class="text-3xl sm:text-4xl font-black text-emerald-400 leading-none tracking-tight">45</span>
+                    <span class="text-[10px] font-bold text-slate-400">km/h</span>
+                </div>
+                <div class="flex items-center justify-between text-[8px] font-bold text-slate-400">
+                    <span id="hud-gps-mode-tag" class="text-sky-300 truncate">🚀 Lái thử 60FPS</span>
+                    <span id="hud-heading-tag" class="font-mono text-slate-300">35° BĐ</span>
+                </div>
+            </div>
+
+            <!-- Cột 2 (3/12): Biển báo tốc độ giới hạn P.127 + Nhãn AI TỰ NHẬN + Biển phụ -->
+            <div id="hud-limit-card" onclick="announceCurrentLimit()" class="col-span-3 bg-slate-900/95 backdrop-blur-md border border-slate-700/90 rounded-2xl p-1.5 shadow-2xl flex flex-col items-center justify-between cursor-pointer active:scale-95 transition">
+                <span id="ai-detect-badge" class="px-1.5 py-0.5 rounded-full text-[7px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                    AI TỰ NHẬN
+                </span>
+
+                <div class="flex items-center justify-center gap-1 my-0.5">
+                    <!-- Biển P.127 chuẩn QCVN 41:2019 -->
+                    <div id="hud-limit-circle" class="w-11 h-11 rounded-full bg-white border-[4.5px] border-red-600 flex items-center justify-center text-slate-950 font-black text-base shadow-lg transition-transform">
+                        50
+                    </div>
+                    <!-- Biển cấm/phụ đi kèm -->
+                    <div id="hud-secondary-sign" class="w-8 h-8 flex items-center justify-center shrink-0"></div>
+                </div>
+
+                <span id="hud-limit-caption" class="text-[8px] font-extrabold text-sky-300 truncate max-w-full">
+                    Đô thị • Cấm vượt
+                </span>
+            </div>
+
+            <!-- Cột 3 (5/12): Upcoming Sign Radar Box (Biển báo phía trước trong bán kính 250m) -->
+            <div id="hud-upcoming-card" onclick="jumpNearUpcomingSign()" class="col-span-5 bg-slate-900/95 backdrop-blur-md border border-slate-700/90 rounded-2xl p-2 shadow-2xl flex flex-col justify-between cursor-pointer active:scale-95 transition">
+                <div class="flex items-center justify-between gap-1">
+                    <span class="text-[8px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1 truncate">
+                        <span>📡</span> BIỂN PHÍA TRƯỚC
+                    </span>
+                    <span id="upcoming-dist-badge" class="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-300 font-black text-[10px] shrink-0">
+                        145m
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-2 my-0.5">
+                    <div id="upcoming-sign-icon" class="w-9 h-9 flex items-center justify-center shrink-0"></div>
+                    <div class="min-w-0 flex-1">
+                        <p id="upcoming-sign-name" class="text-[11px] font-black text-white leading-tight truncate">
+                            Hạn chế 50 km/h
+                        </p>
+                        <p id="upcoming-sign-road" class="text-[9px] font-semibold text-slate-400 truncate mt-0.5">
+                            Đại lộ Lê Nin, TP. Vinh
+                        </p>
+                    </div>
+                </div>
+
+                <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="upcoming-dist-bar" class="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500 transition-all duration-150" style="width: 65%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HÀNG 2: QUICK ACTION PILLS ROW (CHẾ ĐỘ VỆ TINH VN, XIN VỊ TRÍ GPS MÁY, 3D, BIỂN BÁO NGHỆ AN) -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 pointer-events-auto">
+            <button id="pill-gps-perm-btn" onclick="openLocationPermissionModal()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-sky-600 hover:bg-sky-500 text-white border border-sky-300 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span>📡 Định Vị Máy</span>
+            </button>
+
+            <button id="pill-mode-btn" onclick="toggleGpsOrSimMode()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-emerald-600 text-white border border-emerald-400 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span id="pill-mode-text">🚀 Lái thử Nghệ An</span>
+            </button>
+
+            <button id="pill-sat-btn" onclick="setBaseMapLayer(0)" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-amber-500 text-slate-950 border border-amber-300 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span>🛰️ Vệ Tinh VN</span>
+            </button>
+
+            <button id="pill-map-btn" onclick="cycleBaseMapLayer()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-slate-900/95 text-amber-300 border border-slate-700 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span id="pill-map-text">🗺️ Nền: Vệ Tinh Hybrid</span>
+            </button>
+
+            <button id="pill-3d-btn" onclick="toggle3DPerspective()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-slate-900/95 text-sky-300 border border-slate-700 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span>📐 Góc 3D: Tắt</span>
+            </button>
+
+            <button id="pill-audio-btn" onclick="toggleAudioSystem()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-slate-900/95 text-emerald-300 border border-slate-700 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span id="pill-audio-text">🔊 Âm thanh: Bật</span>
+            </button>
+
+            <button onclick="openSignsDirectoryModal()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-slate-900/95 text-white border border-slate-700 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span>📋 Biển Nghệ An (<span id="pill-sign-count">24</span>)</span>
+            </button>
+
+            <button onclick="openCityQuickPicker()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-rose-950/95 text-rose-200 border border-rose-500/50 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span>🇻🇳 Toàn Quốc / Nghệ An</span>
+            </button>
+
+            <button onclick="scanSignsAroundCurrentPos()" class="shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-sky-950/95 text-sky-300 border border-sky-500/50 shadow-lg flex items-center gap-1 active:scale-95 transition">
+                <span>🔄 Quét biển quanh đây</span>
+            </button>
+        </div>
+
+        <!-- HÀNG 3: THANH TÌM KIẾM ĐỊA ĐIỂM & CHỈ ĐƯỜNG -->
+        <div class="flex items-center gap-1.5 pointer-events-auto">
+            <div class="relative flex-1">
+                <input
+                    id="destination-search-input"
+                    type="text"
+                    placeholder="Nhập điểm đến (VD: Quảng trường HCM, Vinh, Hà Nội)..."
+                    onkeydown="if(event.key==='Enter') searchDestinationAndRoute()"
+                    class="w-full bg-slate-900/95 backdrop-blur-md border border-slate-700/90 rounded-xl pl-3 pr-8 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-xl"
+                />
+                <button onclick="openCityQuickPicker()" title="Chọn nhanh thành phố" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-sky-400 text-xs">
+                    📍
+                </button>
+            </div>
+            <button onclick="searchDestinationAndRoute()" class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-black text-xs shadow-xl shrink-0 active:scale-95 transition">
+                Chỉ đường
+            </button>
+        </div>
+
+        <!-- HÀNG 4: TURN-BY-TURN NAVIGATION BANNER (HIỂN THỊ KHI ĐANG DẪN ĐƯỜNG) -->
+        <div id="turn-by-turn-banner" class="pointer-events-auto bg-gradient-to-r from-sky-950/95 via-slate-900/95 to-sky-950/95 backdrop-blur-md border border-sky-500/60 rounded-2xl px-3 py-2 shadow-2xl flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div id="tbt-direction-icon" class="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-400/50 flex items-center justify-center text-sky-300 font-black text-lg shrink-0">
+                    ⬆️
+                </div>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span id="tbt-instruction-title" class="text-xs font-black text-white truncate">
+                            Đi thẳng theo Đại lộ Lê Nin
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] font-bold text-sky-300 mt-0.5">
+                        <span id="tbt-remain-distance">Còn 3.2 km</span>
+                        <span>•</span>
+                        <span id="tbt-eta-minutes">ETA 4 phút</span>
+                        <span class="text-slate-400 hidden sm:inline">• Chạm bản đồ để đổi điểm đến</span>
+                    </div>
+                </div>
+            </div>
+            <button onclick="cancelActiveNavigation()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-950/80 border border-slate-600 text-[10px] font-bold text-slate-200 shrink-0 active:scale-95 transition">
+                Hủy
+            </button>
+        </div>
+
+        <!-- HÀNG 5: FLOATING ALERT BANNER (CẢNH BÁO QUÁ TỐC ĐỘ HOẶC BIỂN BÁO KHẨN CẤP) -->
+        <div id="floating-warning-banner" class="hidden pointer-events-auto">
+            <div id="floating-warning-inner" class="overspeed-glow-pulse bg-gradient-to-r from-red-700 via-rose-600 to-red-700 border-2 border-yellow-300 rounded-2xl px-3 py-2 shadow-2xl flex items-center justify-between gap-2 text-white">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <div id="floating-warning-sign" class="shrink-0"></div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <span id="floating-warning-tag" class="px-1.5 py-0.5 rounded bg-yellow-300 text-slate-950 text-[8px] font-black uppercase">
+                                CẢNH BÁO QUÁ TỐC ĐỘ
+                            </span>
+                            <span id="floating-warning-subtag" class="text-[10px] font-black text-yellow-200 truncate">
+                                Vượt +18 km/h
+                            </span>
+                        </div>
+                        <p id="floating-warning-message" class="text-xs font-black text-white truncate mt-0.5">
+                            Đang chạy 68 km/h • Giới hạn cho phép 50 km/h!
+                        </p>
+                    </div>
+                </div>
+                <button onclick="decelerateMinus20()" class="px-2.5 py-1.5 rounded-xl bg-yellow-300 hover:bg-yellow-200 text-slate-950 font-black text-[10px] shrink-0 shadow active:scale-95 transition">
+                    Giảm ga (-20 km/h)
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ================= 4. BOTTOM CONTROL DOCK (COMMUNITY REPORTING + DRIVING CONSOLE) ================= -->
+    <footer class="fixed bottom-0 left-0 right-0 z-[1000] p-2 pointer-events-none flex flex-col gap-1.5">
+
+        <!-- HÀNG TRÊN: 5 NÚT BÁO CÁO GIAO THÔNG CỘNG ĐỒNG TỨC THÌ -->
+        <div class="grid grid-cols-5 gap-1 pointer-events-auto">
+            <button onclick="reportCommunitySign('camera')" class="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-md border border-slate-700/90 rounded-xl py-1.5 px-1 shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                <span class="text-xs">📷</span>
+                <span class="text-[9px] font-extrabold text-amber-300 leading-tight">Phạt nguội</span>
+            </button>
+            <button onclick="reportCommunitySign('speed')" class="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-md border border-slate-700/90 rounded-xl py-1.5 px-1 shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                <span class="text-xs">⚡</span>
+                <span class="text-[9px] font-extrabold text-rose-300 leading-tight">Bắn tốc độ</span>
+            </button>
+            <button onclick="openProhibitSignPicker()" class="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-md border border-slate-700/90 rounded-xl py-1.5 px-1 shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                <span class="text-xs">🚫</span>
+                <span class="text-[9px] font-extrabold text-red-400 leading-tight">Biển cấm</span>
+            </button>
+            <button onclick="reportCommunitySign('toll')" class="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-md border border-slate-700/90 rounded-xl py-1.5 px-1 shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                <span class="text-xs">💰</span>
+                <span class="text-[9px] font-extrabold text-emerald-300 leading-tight">Thu phí</span>
+            </button>
+            <button onclick="reportCommunitySign('jam')" class="bg-slate-900/95 hover:bg-slate-800 backdrop-blur-md border border-slate-700/90 rounded-xl py-1.5 px-1 shadow-xl flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                <span class="text-xs">🚗</span>
+                <span class="text-[9px] font-extrabold text-sky-300 leading-tight">Kẹt xe</span>
+            </button>
+        </div>
+
+        <!-- HÀNG DƯỚI: BẢNG ĐIỀU KHIỂN LÁI XE (CHÂN GA, TỐC ĐỘ NHANH, TEST QUÁ TỐC ĐỘ, ĐÁNH LÁI) -->
+        <div class="bg-slate-900/95 backdrop-blur-xl border border-slate-700/90 rounded-2xl px-3 py-2 shadow-2xl flex flex-col gap-1.5 pointer-events-auto">
+
+            <!-- Dòng 1: Thanh trượt Chân Ga 0 - 120 km/h + Nút Đánh lái Trái/Phải/Tâm xe -->
+            <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1 shrink-0">
+                    <span class="text-[10px] font-black uppercase text-sky-400">Chân ga</span>
+                    <span id="throttle-readout" class="text-[11px] font-black text-emerald-400 min-w-[48px]">45 km/h</span>
+                </div>
+
+                <input
+                    id="throttle-slider"
+                    type="range"
+                    min="0"
+                    max="120"
+                    value="45"
+                    oninput="handleThrottleSlide(this.value)"
+                    class="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+                />
+
+                <!-- Cụm nút Đánh lái & Khoá tâm xe -->
+                <div class="flex items-center gap-1 shrink-0">
+                    <button onclick="steerVehicle(-22)" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] font-bold text-slate-200 active:scale-90 transition">
+                        ⬅️ Lái trái
+                    </button>
+                    <button onclick="steerVehicle(22)" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] font-bold text-slate-200 active:scale-90 transition">
+                        ➡️ Lái phải
+                    </button>
+                    <button id="recenter-car-btn" onclick="recenterAndFollowVehicle()" class="px-2 py-1 rounded-lg bg-sky-600 text-white border border-sky-400 text-[10px] font-black active:scale-90 transition">
+                        📍 Tâm xe
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dòng 2: Nút chọn nhanh tốc độ & Nút đỏ Test Quá Tốc Độ -->
+            <div class="flex items-center justify-between gap-1 overflow-x-auto no-scrollbar">
+                <div class="flex items-center gap-1 shrink-0">
+                    <button onclick="applyPresetSpeed(0)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] font-bold text-slate-300 active:scale-95">
+                        Dừng (0)
+                    </button>
+                    <button onclick="applyPresetSpeed(45)" class="px-2.5 py-1 rounded-lg bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/50 text-[10px] font-bold text-emerald-300 active:scale-95">
+                        45 km/h
+                    </button>
+                    <button onclick="applyPresetSpeed(68)" class="px-2.5 py-1 rounded-lg bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/60 text-[10px] font-extrabold text-rose-200 active:scale-95">
+                        68 km/h (Vượt)
+                    </button>
+                    <button onclick="applyPresetSpeed(90)" class="px-2.5 py-1 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/60 text-[10px] font-extrabold text-amber-200 active:scale-95">
+                        90 km/h
+                    </button>
+                </div>
+
+                <button onclick="triggerInstantOverspeedTest()" class="px-3 py-1 rounded-lg bg-gradient-to-r from-red-600 to-rose-600 border border-yellow-300/80 text-white font-black text-[10px] shadow-lg shrink-0 active:scale-95 transition">
+                    🔥 Test Quá Tốc Độ
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ================= MODAL 1: DANH SÁCH TẤT CẢ BIỂN BÁO TRÊN ĐƯỜNG ================= -->
+    <div id="signs-directory-modal" class="fixed inset-0 z-[2000] bg-black/75 backdrop-blur-sm hidden flex-col justify-end">
+        <div class="bg-slate-900 border-t border-slate-700 rounded-t-3xl p-4 max-h-[82vh] flex flex-col shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                    <h3 class="text-sm sm:text-base font-black text-white">Hệ thống Biển báo QCVN 41:2019 & Camera</h3>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Bấm "Chạy thử qua biển" để đưa xe tới cách biển 120m và kiểm tra AI nhận diện</p>
+                </div>
+                <button onclick="closeSignsDirectoryModal()" class="w-8 h-8 rounded-full bg-slate-800 text-slate-300 font-bold flex items-center justify-center">
+                    ✕
+                </button>
+            </div>
+            <div id="signs-directory-list" class="flex-1 overflow-y-auto py-3 space-y-2"></div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 2: CHỌN BIỂN BÁO CẤM / HẠN CHẾ TỐC ĐỘ ĐỂ GHIM LÊN BẢN ĐỒ ================= -->
+    <div id="prohibit-picker-modal" class="fixed inset-0 z-[2000] bg-black/75 backdrop-blur-sm hidden flex-col justify-end">
+        <div class="bg-slate-900 border-t border-slate-700 rounded-t-3xl p-4 max-h-[84vh] overflow-y-auto shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                    <h3 class="text-sm sm:text-base font-black text-white">Thêm Biển Cấm & Biển Hạn Chế Tốc Độ</h3>
+                    <p class="text-[11px] text-slate-400">Ghim biển báo chuẩn QCVN 41:2019 ngay phía trước đầu xe (90m)</p>
+                </div>
+                <button onclick="closeProhibitSignPicker()" class="w-8 h-8 rounded-full bg-slate-800 text-slate-300 font-bold flex items-center justify-center">
+                    ✕
+                </button>
+            </div>
+
+            <div class="mt-3 space-y-3">
+                <div>
+                    <p class="text-[11px] font-extrabold uppercase tracking-wider text-sky-400 mb-2">Biển hạn chế tốc độ (P.127)</p>
+                    <div class="grid grid-cols-4 gap-2">
+                        <button onclick="placeSpecificSignAhead('speed40')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-speed40"></div>
+                            <span class="text-[10px] font-bold">Tối đa 40</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('speed50')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-speed50"></div>
+                            <span class="text-[10px] font-bold">Tối đa 50</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('speed60')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-speed60"></div>
+                            <span class="text-[10px] font-bold">Tối đa 60</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('speed80')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-speed80"></div>
+                            <span class="text-[10px] font-bold">Tối đa 80</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <p class="text-[11px] font-extrabold uppercase tracking-wider text-rose-400 mb-2">Biển báo cấm & Khu đông dân cư</p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="placeSpecificSignAhead('no_overtake')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-no-overtake"></div>
+                            <span class="text-[10px] font-bold">Cấm vượt (P.125)</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('no_left_turn')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-no-left"></div>
+                            <span class="text-[10px] font-bold">Cấm rẽ trái (P.123a)</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('no_uturn')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-no-uturn"></div>
+                            <span class="text-[10px] font-bold">Cấm quay đầu (P.124a)</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('no_parking')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-no-parking"></div>
+                            <span class="text-[10px] font-bold">Cấm dừng đỗ (P.130)</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('no_entry')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-no-entry"></div>
+                            <span class="text-[10px] font-bold">Cấm ngược chiều (P.102)</span>
+                        </button>
+                        <button onclick="placeSpecificSignAhead('residential')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex flex-col items-center gap-1">
+                            <div id="modal-icon-residential"></div>
+                            <span class="text-[10px] font-bold">Khu dân cư (R.420)</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 3: CHỌN NHANH KHU VỰC NGHỆ AN & TOÀN QUỐC VIỆT NAM ================= -->
+    <div id="city-picker-modal" class="fixed inset-0 z-[2000] bg-black/75 backdrop-blur-sm hidden flex-col justify-end">
+        <div class="bg-slate-900 border-t border-slate-700 rounded-t-3xl p-4 max-h-[84vh] overflow-y-auto shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                    <h3 class="text-sm sm:text-base font-black text-white">🇻🇳 Bản Đồ Vệ Tinh Toàn Quốc & Trọng Điểm Nghệ An</h3>
+                    <p class="text-[11px] text-slate-400">Chọn khu vực để di chuyển bản đồ hoặc bật định vị GPS máy của bạn</p>
+                </div>
+                <button onclick="closeCityQuickPicker()" class="w-8 h-8 rounded-full bg-slate-800 text-slate-300 font-bold flex items-center justify-center">✕</button>
+            </div>
+
+            <div class="mt-3 space-y-3">
+                <div>
+                    <p class="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 mb-2">🔥 Các tuyến điểm thực tế tại Nghệ An (Dữ liệu chuẩn Vietmap)</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <button onclick="relocateToNgheAnArea(18.6591, 105.6953, 'Ngã tư Đại học Vinh - Lê Duẩn')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-left">
+                            <div class="text-xs font-black text-amber-300">📍 Ngã tư ĐH Vinh</div>
+                            <div class="text-[10px] text-slate-400">Cam phạt nguội • 50km/h</div>
+                        </button>
+                        <button onclick="relocateToNgheAnArea(18.6852, 105.6741, 'Ngã tư Ga Vinh - Lê Lợi')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-left">
+                            <div class="text-xs font-black text-amber-300">📍 Ngã tư Ga Vinh</div>
+                            <div class="text-[10px] text-slate-400">Cụm Cam AI • 50km/h</div>
+                        </button>
+                        <button onclick="relocateToNgheAnArea(18.6838, 105.6885, 'Đại lộ Lê Nin - Nguyễn Sỹ Sách')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-left">
+                            <div class="text-xs font-black text-amber-300">📍 Đại lộ Lê Nin</div>
+                            <div class="text-[10px] text-slate-400">Cam tốc độ 50-60km/h</div>
+                        </button>
+                        <button onclick="relocateToNgheAnArea(18.6475, 105.7042, 'Cầu Bến Thủy 1 & Trạm VETC')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-left">
+                            <div class="text-xs font-black text-amber-300">📍 Cầu Bến Thủy 1</div>
+                            <div class="text-[10px] text-slate-400">Trạm thu phí 30-40km/h</div>
+                        </button>
+                        <button onclick="relocateToNgheAnArea(18.7120, 105.7180, 'Đại lộ Vinh - Cửa Lò (Đường 72m)')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-left">
+                            <div class="text-xs font-black text-amber-300">📍 Đường 72m Cửa Lò</div>
+                            <div class="text-[10px] text-slate-400">Tốc độ 80km/h • Cam AI</div>
+                        </button>
+                        <button onclick="relocateToNgheAnArea(18.9755, 105.5982, 'QL1A - Ngã ba Diễn Châu, Nghệ An')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-left">
+                            <div class="text-xs font-black text-amber-300">📍 QL1A Diễn Châu</div>
+                            <div class="text-[10px] text-slate-400">Cam phạt nguội QL1A</div>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <p class="text-[11px] font-extrabold uppercase tracking-wider text-sky-400 mb-2">🛰️ Các Tỉnh / Thành Phố Lớn Toàn Quốc (Vệ Tinh Hybrid)</p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="relocateToCity(21.0285, 105.8542, 'Hoàn Kiếm, Hà Nội')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-emerald-300">
+                            📍 Hà Nội
+                        </button>
+                        <button onclick="relocateToCity(16.0544, 108.2022, 'Hải Châu, Đà Nẵng')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-sky-300">
+                            📍 Đà Nẵng
+                        </button>
+                        <button onclick="relocateToCity(10.7769, 106.7009, 'Quận 1, TP. Hồ Chí Minh')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-amber-300">
+                            📍 TP. HCM
+                        </button>
+                        <button onclick="relocateToCity(20.8449, 106.6881, 'Hồng Bàng, Hải Phòng')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-purple-300">
+                            📍 Hải Phòng
+                        </button>
+                        <button onclick="relocateToCity(18.3430, 105.9057, 'TP. Hà Tĩnh')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-rose-300">
+                            📍 Hà Tĩnh
+                        </button>
+                        <button onclick="relocateToCity(10.0452, 105.7469, 'Ninh Kiều, Cần Thơ')" class="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-extrabold text-teal-300">
+                            📍 Cần Thơ
+                        </button>
+                    </div>
+                </div>
+
+                <button onclick="viewWholeVietnamSatellite()" class="w-full py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-700 text-white font-black text-xs shadow-lg active:scale-95 transition">
+                    🇻🇳 Xem Toàn Cảnh Vệ Tinh Bản Đồ Việt Nam
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL 4: XIN CẤP QUYỀN CHIA SẺ VỊ TRÍ MÁY (GPS THỰC TẾ) ================= -->
+    <div id="location-permission-modal" class="fixed inset-0 z-[2500] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-sky-500/70 rounded-3xl p-5 max-w-md w-full shadow-2xl flex flex-col gap-3.5 text-center relative overflow-hidden">
+            <div class="mx-auto w-14 h-14 rounded-2xl bg-sky-500/20 border border-sky-400/50 flex items-center justify-center text-3xl shadow-inner">
+                📡
+            </div>
+            <div>
+                <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                    Vietmap Live Pro • Định Vị Toàn Quốc
+                </span>
+                <h2 class="text-base sm:text-lg font-black text-white mt-1.5">
+                    Cho phép chia sẻ vị trí thiết bị của bạn?
+                </h2>
+                <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+                    Ứng dụng cần quyền truy cập <strong>GPS vị trí máy</strong> để xác định đúng tuyến đường bạn đang di chuyển, hiển thị bản đồ vệ tinh và <strong>phát cảnh báo tốc độ / camera phạt nguội chính xác tại nơi bạn đứng</strong>.
+                </p>
+            </div>
+
+            <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-2.5 text-left text-[11px] text-slate-300 space-y-1">
+                <div class="flex items-center gap-2">
+                    <span class="text-emerald-400 font-black">✓</span>
+                    <span>Bản đồ <strong>Vệ Tinh Hybrid Toàn Việt Nam</strong> rõ từng nóc nhà & tên đường.</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-emerald-400 font-black">✓</span>
+                    <span>Cập nhật chuẩn <strong>24 điểm Camera phạt nguội & Biển báo thực tế tại Nghệ An</strong>.</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-emerald-400 font-black">✓</span>
+                    <span>Tự động quét và tạo cảnh báo tốc độ ngay tại vị trí GPS thực tế của bạn.</span>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2 pt-1">
+                <button onclick="requestUserDeviceGPSPermission()" class="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-xs sm:text-sm shadow-xl border border-sky-300 flex items-center justify-center gap-2 active:scale-95 transition">
+                    <span>📡 Cho phép Chia sẻ Vị trí Máy (GPS Thực tế)</span>
+                </button>
+                <button onclick="startNgheAnRealisticSimulation()" class="w-full py-2.5 px-4 rounded-2xl bg-emerald-600/25 hover:bg-emerald-600/35 text-emerald-300 font-extrabold text-xs border border-emerald-500/50 flex items-center justify-center gap-1.5 active:scale-95 transition">
+                    <span>🚀 Lái Thử Thực Tế tại TP. Vinh - Nghệ An (60FPS)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= TOAST THÔNG BÁO NỔI ================= -->
+    <div id="app-toast" class="fixed top-28 left-1/2 -translate-x-1/2 z-[3000] pointer-events-none opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-950/95 border border-sky-400/70 text-white px-4 py-2 rounded-full shadow-2xl text-xs font-extrabold flex items-center gap-2 whitespace-nowrap">
+            <span id="app-toast-text">Hệ thống Vietmap Live Pro sẵn sàng!</span>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. KHỞI TẠO TELEGRAM WEBAPP & TRẠNG THÁI TOÀN CỤC
+        // =========================================================================
+        const tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+        if (tg) {
+            try {
+                tg.ready();
+                tg.expand();
+                if (tg.setHeaderColor) tg.setHeaderColor('#070b14');
+            } catch (e) {}
+        }
+
+        function triggerHaptic(type = 'warning') {
+            if (tg && tg.HapticFeedback) {
+                try { tg.HapticFeedback.notificationOccurred(type); } catch (e) {}
+            }
+        }
+
+        // Tọa độ mặc định: Ngã tư Đại học Vinh - Lê Duẩn, TP. Vinh, Nghệ An
+        let currentLat = 18.6591;
+        let currentLng = 105.6953;
+        let currentSpeed = 45;          // km/h
+        let currentHeading = 325;       // độ (0 - 360)
+        let activeRoadLimit = 50;       // Giới hạn tốc độ hiện hành (km/h)
+        let activeSecondaryCode = 'camera_ai';
+        let activeSecondaryLabel = 'TP. Vinh • Cam Phạt Nguội';
+        let activeRoadName = 'Đường Lê Duẩn - Trường Thi, TP. Vinh';
+
+        // Chế độ vận hành: 'SIM_ROUTE' | 'SIM_FREE' | 'REAL_GPS'
+        let engineMode = 'SIM_ROUTE';
+        let autoFollowVehicle = true;
+        let is3DPerspective = false;
+        let audioSystemEnabled = true;
+
+        // Quản lý lộ trình 60FPS
+        let routePoints = [];           // [{lat, lng, cumDist}]
+        let totalRouteMeters = 0;
+        let traveledMeters = 0;
+        let lastAnimTimestamp = performance.now();
+
+        // Đối tượng Leaflet
+        let map = null;
+        let activeTileLayer = null;
+        let currentTileIndex = 0;       // Mặc định 0 = Vệ Tinh Hybrid Việt Nam
+        let vehicleMarker = null;
+        let vehicleAccuracyRing = null;
+        let routeOuterPolyline = null;
+        let routeInnerPolyline = null;
+        let traveledTrailPolyline = null;
+        let traveledTrailCoords = [];
+        let signsLayerGroup = null;
+        let rangeCirclesLayerGroup = null;
+
+        // Danh sách biển báo & Cooldown âm thanh
+        let roadSignsDatabase = [];
+        let lastAutoDetectedSignId = null;
+        let lastVoiceAlertSignId = null;
+        let lastVoiceAlertTime = 0;
+        let lastOverspeedBeepTime = 0;
+        let lastOverspeedSpeechTime = 0;
+
+        // Định vị GPS thực tế + Kalman Filter
+        let realGpsWatchId = null;
+        let lastRealGpsCoord = null;
+        let lastRealGpsTime = 0;
+        let kalmanSpeedKmh = 0;
+
+        // =========================================================================
+        // CƠ SỞ DỮ LIỆU THỰC TẾ 24 BIỂN BÁO, CAMERA PHẠT NGUỘI & TRẠM THU PHÍ TẠI NGHỆ AN
+        // =========================================================================
+        const NGHE_AN_AUTHENTIC_SIGNS = [
+            {
+                id: 'na_real_1',
+                lat: 18.6438, lng: 105.7068,
+                signCode: 'toll_etc', speedLimit: 30,
+                title: 'Trạm thu phí Cầu Bến Thủy 1 (VETC / ePass)',
+                road: 'QL1A - Phường Bến Thủy, TP. Vinh',
+                secondaryCode: 'toll_etc', secondaryLabel: 'Trạm Bến Thủy 30km/h',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_2',
+                lat: 18.6475, lng: 105.7042,
+                signCode: 'speed40', speedLimit: 40,
+                title: 'Cầu Bến Thủy 1 - Hạn chế 40 km/h & Cấm vượt',
+                road: 'Cầu Bến Thủy 1 (QL1A nối Nghệ An - Hà Tĩnh)',
+                secondaryCode: 'no_overtake', secondaryLabel: 'Cầu Bến Thủy • Cấm vượt',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_3',
+                lat: 18.6591, lng: 105.6953,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Camera Phạt Nguội Ngã tư Đại học Vinh (Đèn đỏ & Sai làn)',
+                road: 'Giao lộ Lê Duẩn - Trường Thi - Nguyễn Du, TP. Vinh',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Cam ĐH Vinh 50km/h',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_4',
+                lat: 18.6652, lng: 105.6902,
+                signCode: 'no_uturn', speedLimit: 50,
+                title: 'Đường Lê Duẩn (Quân Khu 4) - Cấm quay đầu & Tối đa 50 km/h',
+                road: 'Đường Lê Duẩn, TP. Vinh',
+                secondaryCode: 'no_uturn', secondaryLabel: 'Lê Duẩn • Cấm quay đầu',
+                hasRangeCircle: false
+            },
+            {
+                id: 'na_real_5',
+                lat: 18.6715, lng: 105.6872,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Camera AI Vòng xuyến Hải Quan - Trường Thi',
+                road: 'Vòng xuyến Trường Thi - Lê Hồng Phong, TP. Vinh',
+                secondaryCode: 'speed50', secondaryLabel: 'Vòng xuyến Hải Quan 50',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_6',
+                lat: 18.6755, lng: 105.6912,
+                signCode: 'no_parking', speedLimit: 40,
+                title: 'Quảng trường Hồ Chí Minh - Cấm dừng đỗ (P.130) & Tối đa 40 km/h',
+                road: 'Đường Trường Thi (Quảng trường HCM), TP. Vinh',
+                secondaryCode: 'no_parking', secondaryLabel: 'Quảng trường • Cấm đỗ 40',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_7',
+                lat: 18.6705, lng: 105.6795,
+                signCode: 'residential', speedLimit: 50,
+                title: 'Đường Trần Phú (QL1A nội đô) - Khu đông dân cư 50 km/h',
+                road: 'Đường Trần Phú, TP. Vinh',
+                secondaryCode: 'residential', secondaryLabel: 'Trần Phú • Khu dân cư 50',
+                hasRangeCircle: false
+            },
+            {
+                id: 'na_real_8',
+                lat: 18.6682, lng: 105.6748,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Camera Phạt Nguội Ngã tư Chợ Vinh & Cấm rẽ trái theo giờ',
+                road: 'Giao lộ Trần Phú - Cao Thắng (Chợ Vinh)',
+                secondaryCode: 'no_left_turn', secondaryLabel: 'Ngã tư Chợ Vinh • Cam AI',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_9',
+                lat: 18.6768, lng: 105.6752,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Camera Phạt Nguội Quang Trung (Vincom) & Cấm dừng đỗ',
+                road: 'Đường Quang Trung, TP. Vinh',
+                secondaryCode: 'no_parking', secondaryLabel: 'Quang Trung • Cam AI 50',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_10',
+                lat: 18.6815, lng: 105.6746,
+                signCode: 'no_overtake', speedLimit: 50,
+                title: 'Đường Lê Lợi (QL1A) - Biển Cấm vượt (P.125) & Tối đa 50 km/h',
+                road: 'Đường Lê Lợi, TP. Vinh',
+                secondaryCode: 'no_overtake', secondaryLabel: 'Lê Lợi • Cấm vượt 50',
+                hasRangeCircle: false
+            },
+            {
+                id: 'na_real_11',
+                lat: 18.6852, lng: 105.6741,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Cụm Camera AI Ngã tư Ga Vinh (Vượt đèn đỏ & Đè vạch)',
+                road: 'Giao lộ Lê Lợi - Phan Bội Châu - Nguyễn Thái Học',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Ngã tư Ga Vinh • Cam AI',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_12',
+                lat: 18.6838, lng: 105.6885,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Camera Phạt Nguội & Bắn Tốc Độ Ngã tư Nguyễn Sỹ Sách - Lê Nin',
+                road: 'Giao lộ Đại lộ Lê Nin - Nguyễn Sỹ Sách, TP. Vinh',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Lê Nin • Cam Tốc Độ 50',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_13',
+                lat: 18.7015, lng: 105.6928,
+                signCode: 'speed60', speedLimit: 60,
+                title: 'Đại lộ Lê Nin (BV Đa khoa Nghệ An) - Giới hạn 60 km/h & Cam AI',
+                road: 'Đại lộ Lê Nin (Xã Nghi Phú), TP. Vinh',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Đại lộ Lê Nin • 60km/h',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_14',
+                lat: 18.7185, lng: 105.6675,
+                signCode: 'no_overtake', speedLimit: 50,
+                title: 'Cầu vượt Quán Bánh (QL1A) - Cấm vượt & Giới hạn 50 km/h',
+                road: 'Cầu vượt Quán Bánh, Xã Nghi Kim, TP. Vinh',
+                secondaryCode: 'no_overtake', secondaryLabel: 'Cầu Quán Bánh • 50km/h',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_15',
+                lat: 18.7265, lng: 105.6632,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Camera Phạt Nguội Cửa ngõ Bến xe Bắc Vinh (QL1A)',
+                road: 'QL1A - Bến xe Bắc Vinh, Nghi Kim',
+                secondaryCode: 'speed50', secondaryLabel: 'BX Bắc Vinh • Cam 50',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_16',
+                lat: 18.7335, lng: 105.6765,
+                signCode: 'speed40', speedLimit: 40,
+                title: 'Cửa ngõ Sân bay Quốc tế Vinh - Hạn chế 40 km/h & Cấm đỗ xe',
+                road: 'Đường vào Cảng hàng không Quốc tế Vinh',
+                secondaryCode: 'no_parking', secondaryLabel: 'Sân bay Vinh • 40km/h',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_17',
+                lat: 18.7120, lng: 105.7180,
+                signCode: 'speed80', speedLimit: 80,
+                title: 'Đại lộ Vinh - Cửa Lò (Đường 72m) - Tối đa 80 km/h & Cam tốc độ',
+                road: 'Đại lộ Vinh - Cửa Lò (Đoạn Nghi Phú - Nghi Đức)',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Đường 72m • Tối đa 80',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_18',
+                lat: 18.7380, lng: 105.7350,
+                signCode: 'speed80', speedLimit: 80,
+                title: 'Đại lộ Vinh - Cửa Lò (Nghi Phong) - Đường đôi 80 km/h',
+                road: 'Đại lộ 72m Vinh - Cửa Lò',
+                secondaryCode: 'no_parking', secondaryLabel: 'Nghi Phong • 80km/h',
+                hasRangeCircle: false
+            },
+            {
+                id: 'na_real_19',
+                lat: 18.7985, lng: 105.7245,
+                signCode: 'residential', speedLimit: 50,
+                title: 'Đường Bình Minh (TX. Cửa Lò) - Khu dân cư 50 km/h & Cam phạt nguội',
+                road: 'Đường Bình Minh, Thị xã Cửa Lò, Nghệ An',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Cửa Lò • KDC 50km/h',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_20',
+                lat: 18.6720, lng: 105.6180,
+                signCode: 'no_overtake', speedLimit: 70,
+                title: 'Đường tránh TP. Vinh (Hưng Nguyên) - Cấm vượt & Bắn tốc độ 70 km/h',
+                road: 'Tuyến tránh TP. Vinh - Huyện Hưng Nguyên, Nghệ An',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Đường tránh Vinh • 70',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_21',
+                lat: 18.6785, lng: 105.6350,
+                signCode: 'residential', speedLimit: 50,
+                title: 'Quốc lộ 46A (Hưng Chính - đi Nam Đàn) - Khu dân cư 50 km/h',
+                road: 'Quốc lộ 46A, TP. Vinh - Nam Đàn',
+                secondaryCode: 'speed50', secondaryLabel: 'QL46A • Khu dân cư 50',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_22',
+                lat: 18.7820, lng: 105.6410,
+                signCode: 'camera_ai', speedLimit: 60,
+                title: 'Camera Phạt Nguội QL1A - Thị trấn Quán Hành (Nghi Lộc)',
+                road: 'Quốc lộ 1A - TT. Quán Hành, Huyện Nghi Lộc, Nghệ An',
+                secondaryCode: 'speed60', secondaryLabel: 'Quán Hành • Cam 60km/h',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_23',
+                lat: 18.9755, lng: 105.5982,
+                signCode: 'camera_ai', speedLimit: 50,
+                title: 'Cụm Camera AI Phạt Nguội Ngã ba Diễn Châu (QL1A - QL7)',
+                road: 'Quốc lộ 1A - Thị trấn Diễn Châu, Nghệ An',
+                secondaryCode: 'camera_ai', secondaryLabel: 'Diễn Châu • Cam AI 50',
+                hasRangeCircle: true
+            },
+            {
+                id: 'na_real_24',
+                lat: 19.2450, lng: 105.7165,
+                signCode: 'toll_etc', speedLimit: 40,
+                title: 'Trạm thu phí Hoàng Mai (QL1A - VETC / ePass) - Tối đa 40 km/h',
+                road: 'Quốc lộ 1A - Thị xã Hoàng Mai, Nghệ An',
+                secondaryCode: 'toll_etc', secondaryLabel: 'Trạm Hoàng Mai • 40km/h',
+                hasRangeCircle: true
+            }
+        ];
+
+        // Lộ trình thực tế xuyên tâm TP. Vinh (Từ Trạm Bến Thủy -> ĐH Vinh -> Lê Duẩn -> Hải Quan -> Chợ Vinh -> Quang Trung -> Ga Vinh -> Lê Nin -> Sân bay Vinh)
+        const VINH_AUTHENTIC_ROUTE_ANCHORS = [
+            [18.6438, 105.7068], // Trạm thu phí Bến Thủy
+            [18.6475, 105.7042], // Cầu Bến Thủy 1
+            [18.6591, 105.6953], // Ngã tư Đại học Vinh
+            [18.6652, 105.6902], // Đường Lê Duẩn (Quân khu 4)
+            [18.6715, 105.6872], // Vòng xuyến Hải Quan
+            [18.6755, 105.6912], // Quảng trường Hồ Chí Minh
+            [18.6705, 105.6795], // Đường Trần Phú
+            [18.6682, 105.6748], // Ngã tư Chợ Vinh
+            [18.6768, 105.6752], // Đường Quang Trung (Vincom)
+            [18.6815, 105.6746], // Đường Lê Lợi
+            [18.6852, 105.6741], // Ngã tư Ga Vinh
+            [18.6838, 105.6885], // Ngã tư Nguyễn Sỹ Sách - Đại lộ Lê Nin
+            [18.7015, 105.6928], // Đại lộ Lê Nin (BV Đa khoa Nghệ An)
+            [18.7120, 105.7180], // Đại lộ Vinh - Cửa Lò (Đường 72m)
+            [18.7335, 105.6765], // Sân bay Quốc tế Vinh
+            [18.7265, 105.6632], // Bến xe Bắc Vinh
+            [18.7185, 105.6675], // Cầu vượt Quán Bánh
+            [18.6852, 105.6741], // Quay về Ngã tư Ga Vinh
+            [18.6591, 105.6953]  // Khép vòng tại Ngã tư Đại học Vinh
+        ];
+
+        // 3 Chế độ bản đồ nền hỗ trợ toàn lãnh thổ Việt Nam (Mặc định 0: Vệ Tinh Hybrid Việt Nam)
+        const BASE_MAP_LAYERS = [
+            {
+                label: 'Vệ Tinh Hybrid VN',
+                type: 'hybrid_satellite'
+            },
+            {
+                label: 'Ban Đêm (Vietmap)',
+                type: 'single',
+                url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                options: { maxZoom: 19, subdomains: 'abcd' }
+            },
+            {
+                label: 'Đường Phố VN',
+                type: 'single',
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                options: { maxZoom: 19 }
+            }
+        ];
+
+        function createMapLayerByIndex(idx) {
+            const cfg = BASE_MAP_LAYERS[idx] || BASE_MAP_LAYERS[0];
+            if (cfg.type === 'hybrid_satellite') {
+                // Kết hợp ảnh vệ tinh độ phân giải cao toàn Việt Nam + Lớp nhãn tên đường/địa danh tiếng Việt rõ nét
+                const googleHybridTile = L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=vi&x={x}&y={y}&z={z}', {
+                    maxZoom: 20,
+                    attribution: 'Google Satellite Hybrid VN'
+                });
+                const esriSatBackup = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    maxZoom: 19
+                });
+                const labelOverlay = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19,
+                    subdomains: 'abcd',
+                    opacity: 0.92
+                });
+                return L.layerGroup([esriSatBackup, googleHybridTile, labelOverlay]);
+            }
+            return L.tileLayer(cfg.url, cfg.options);
+        }
+
+        // =========================================================================
+        // 2. BỘ VẼ BIỂN BÁO GIAO THÔNG QCVN 41:2019 BẰNG ĐỒ HỌA SVG CHÂN THỰC
+        // =========================================================================
+        function buildQCVNSignSVG(signOrCode, size = 36, customSpeed = 50) {
+            const code = typeof signOrCode === 'string'
+                ? signOrCode
+                : (signOrCode.signCode || 'speed50');
+            const speedLimit = (typeof signOrCode === 'object' && signOrCode.speedLimit)
+                ? signOrCode.speedLimit
+                : customSpeed;
+
+            // 1. P.127 Biển hạn chế tốc độ tối đa (30, 40, 50, 60, 70, 80 km/h)
+            if (code.startsWith('speed')) {
+                const num = speedLimit || parseInt(code.replace('speed', ''), 10) || 50;
+                const borderPx = Math.max(4, Math.round(size * 0.13));
+                const fontPx = Math.round(size * 0.42);
+                return `
+                    <div style="width:${size}px;height:${size}px;border-radius:50%;background:#ffffff;border:${borderPx}px solid #dc2626;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:${fontPx}px;color:#0f172a;box-shadow:0 2px 6px rgba(0,0,0,0.55);letter-spacing:-0.5px;">
+                        ${num}
+                    </div>
+                `;
+            }
+
+            // 2. P.125 Biển cấm vượt (2 xe con đỏ - đen cạnh nhau)
+            if (code === 'no_overtake') {
+                return `
+                    <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                        <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#dc2626" stroke-width="5"/>
+                        <path d="M10 29v-5l2-4h6l2 4v5H10z" fill="#dc2626"/>
+                        <circle cx="12.5" cy="30" r="2" fill="#0f172a"/><circle cx="17.5" cy="30" r="2" fill="#0f172a"/>
+                        <path d="M26 29v-5l2-4h6l2 4v5H26z" fill="#0f172a"/>
+                        <circle cx="28.5" cy="30" r="2" fill="#0f172a"/><circle cx="33.5" cy="30" r="2" fill="#0f172a"/>
+                        <line x1="10" y1="10" x2="38" y2="38" stroke="#dc2626" stroke-width="4.2"/>
+                    </svg>
+                `;
+            }
+
+            // 3. P.123a Biển cấm rẽ trái
+            if (code === 'no_left_turn') {
+                return `
+                    <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                        <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#dc2626" stroke-width="5"/>
+                        <path d="M29 34V21c0-2.5-2-4.5-4.5-4.5H16" fill="none" stroke="#0f172a" stroke-width="4" stroke-linecap="round"/>
+                        <polygon points="18,11 11,16.5 18,22" fill="#0f172a"/>
+                        <line x1="10" y1="10" x2="38" y2="38" stroke="#dc2626" stroke-width="4.5"/>
+                    </svg>
+                `;
+            }
+
+            // 4. P.124a Biển cấm quay đầu xe
+            if (code === 'no_uturn') {
+                return `
+                    <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                        <circle cx="24" cy="24" r="21" fill="#ffffff" stroke="#dc2626" stroke-width="5"/>
+                        <path d="M29 33V19a6 6 0 0 0-12 0v9" fill="none" stroke="#0f172a" stroke-width="3.8" stroke-linecap="round"/>
+                        <polygon points="13,26 17,33 21,26" fill="#0f172a"/>
+                        <line x1="10" y1="10" x2="38" y2="38" stroke="#dc2626" stroke-width="4.5"/>
+                    </svg>
+                `;
+            }
+
+            // 5. P.130 Biển cấm dừng và đỗ xe
+            if (code === 'no_parking') {
+                return `
+                    <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                        <circle cx="24" cy="24" r="21" fill="#1d4ed8" stroke="#dc2626" stroke-width="5"/>
+                        <line x1="11" y1="11" x2="37" y2="37" stroke="#dc2626" stroke-width="4.5"/>
+                        <line x1="37" y1="11" x2="11" y2="37" stroke="#dc2626" stroke-width="4.5"/>
+                    </svg>
+                `;
+            }
+
+            // 6. P.102 Biển cấm đi ngược chiều
+            if (code === 'no_entry') {
+                return `
+                    <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                        <circle cx="24" cy="24" r="21" fill="#dc2626" stroke="#ffffff" stroke-width="2.5"/>
+                        <rect x="9" y="20" width="30" height="8" rx="1.5" fill="#ffffff"/>
+                    </svg>
+                `;
+            }
+
+            // 7. R.420 Biển bắt đầu Khu đông dân cư (Giới hạn 50 km/h)
+            if (code === 'residential') {
+                const w = Math.round(size * 1.15);
+                const h = Math.round(size * 0.82);
+                return `
+                    <svg width="${w}" height="${h}" viewBox="0 0 54 38">
+                        <rect x="2" y="2" width="50" height="34" rx="4" fill="#1d4ed8" stroke="#ffffff" stroke-width="3"/>
+                        <path d="M7 32V19l6-5 6 5v13H7zm14 0V11h10v21H21zm12 0V16l7-6 7 6v16H33z" fill="#ffffff"/>
+                    </svg>
+                `;
+            }
+
+            // 8. Camera phạt nguội AI & Bắn tốc độ (CCTV SVG)
+            if (code === 'camera_ai') {
+                return `
+                    <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                        <rect x="3" y="3" width="42" height="42" rx="11" fill="#dc2626" stroke="#ffffff" stroke-width="3"/>
+                        <path d="M12 18h18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H12a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" fill="#ffffff"/>
+                        <polygon points="32,21 40,17 40,31 32,27" fill="#fde047"/>
+                        <circle cx="17" cy="24" r="3" fill="#dc2626"/>
+                        <text x="24" y="41" text-anchor="middle" fill="#ffffff" font-size="8.5" font-weight="900">${speedLimit}km</text>
+                    </svg>
+                `;
+            }
+
+            // 9. Trạm thu phí VETC / ePass (Giới hạn 30-40 km/h)
+            if (code === 'toll_etc') {
+                return `
+                    <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                        <rect x="3" y="3" width="42" height="42" rx="11" fill="#0284c7" stroke="#ffffff" stroke-width="3"/>
+                        <rect x="10" y="14" width="6" height="20" rx="1" fill="#ffffff"/>
+                        <rect x="16" y="18" width="22" height="5" rx="1.5" fill="#fde047"/>
+                        <text x="24" y="41" text-anchor="middle" fill="#ffffff" font-size="8.5" font-weight="900">ETC ${speedLimit}</text>
+                    </svg>
+                `;
+            }
+
+            // 10. Cảnh báo Kẹt xe
+            return `
+                <svg width="${size}" height="${size}" viewBox="0 0 48 48">
+                    <polygon points="24,4 45,42 3,42" fill="#fde047" stroke="#dc2626" stroke-width="4" stroke-linejoin="round"/>
+                    <rect x="15" y="25" width="18" height="10" rx="2" fill="#0f172a"/>
+                    <circle cx="18" cy="36" r="2.5" fill="#0f172a"/>
+                    <circle cx="30" cy="36" r="2.5" fill="#0f172a"/>
+                </svg>
+            `;
+        }
+
+        // =========================================================================
+        // 3. KHỞI TẠO BẢN ĐỒ VỆ TINH VIỆT NAM, MARKER XE 3D & DỮ LIỆU NGHỆ AN THỰC TẾ
+        // =========================================================================
+        function initializeApplication() {
+            map = L.map('map', {
+                zoomControl: false,
+                attributionControl: false,
+                maxBounds: [[4.0, 98.0], [26.5, 118.0]], // Bao phủ toàn bộ lãnh thổ & biển đảo Việt Nam
+                minZoom: 5
+            }).setView([currentLat, currentLng], 15);
+
+            // Mặc định mở lớp Vệ Tinh Hybrid Việt Nam để mọi người dùng thấy ngay ảnh vệ tinh + tên đường
+            activeTileLayer = createMapLayerByIndex(0).addTo(map);
+            rangeCirclesLayerGroup = L.layerGroup().addTo(map);
+            signsLayerGroup = L.layerGroup().addTo(map);
+
+            // Chạm trực tiếp vào bất kỳ điểm nào trên bản đồ để tìm đường & lái xe tới đó
+            map.on('click', (evt) => {
+                const targetLat = evt.latlng.lat;
+                const targetLng = evt.latlng.lng;
+                calculateAndStartRoute(currentLat, currentLng, targetLat, targetLng, 'Điểm chọn trên bản đồ');
+            });
+
+            // Khi người dùng kéo bản đồ bằng tay, tạm mở khoá tâm xe
+            map.on('dragstart', () => {
+                if (autoFollowVehicle) {
+                    autoFollowVehicle = false;
+                    updateFollowButtonStyle();
+                }
+            });
+
+            // Khởi tạo Marker Xe Vietmap 3D
+            updateOrCreateVehicleMarker(currentLat, currentLng, currentHeading, 14);
+
+            // Nạp toàn bộ 24 biển báo, camera phạt nguội thực tế tại Nghệ An và lộ trình TP. Vinh
+            loadAuthenticNgheAnRouteAndSigns();
+
+            // Vẽ sẵn icon trong Modal chọn biển cấm
+            populateModalSignIcons();
+
+            // Khởi chạy vòng lặp chuyển động 60FPS bất tử
+            lastAnimTimestamp = performance.now();
+            requestAnimationFrame(unified60FPSLoop);
+        }
+
+        function openLocationPermissionModal() {
+            const modal = document.getElementById('location-permission-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        }
+
+        function closeLocationPermissionModal() {
+            const modal = document.getElementById('location-permission-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function requestUserDeviceGPSPermission() {
+            closeLocationPermissionModal();
+            activateRealHardwareGPS();
+        }
+
+        function startNgheAnRealisticSimulation() {
+            closeLocationPermissionModal();
+            engineMode = 'SIM_ROUTE';
+            currentSpeed = 48;
+            const slider = document.getElementById('throttle-slider');
+            if (slider) slider.value = 48;
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            updateModePillUI();
+            loadAuthenticNgheAnRouteAndSigns();
+            showToast('🚀 Đang chạy lộ trình thực tế qua các tuyến đường TP. Vinh - Nghệ An!');
+            speakVietnameseAlert('Hệ thống dẫn đường và cảnh báo giao thông Nghệ An đã kích hoạt.');
+        }
+
+        function updateOrCreateVehicleMarker(lat, lng, headingDeg = 0, accuracyMeters = 15) {
+            if (!map) return;
+            const pos = [lat, lng];
+
+            if (!vehicleAccuracyRing) {
+                vehicleAccuracyRing = L.circle(pos, {
+                    radius: Math.min(accuracyMeters, 50),
+                    color: '#38bdf8',
+                    weight: 1.5,
+                    fillColor: '#0ea5e9',
+                    fillOpacity: 0.12
+                }).addTo(map);
+            } else {
+                vehicleAccuracyRing.setLatLng(pos);
+            }
+
+            const isOverspeeding = currentSpeed > activeRoadLimit;
+            const speedBadgeClass = isOverspeeding ? 'vehicle-speed-tag is-overspeed' : 'vehicle-speed-tag';
+
+            if (!vehicleMarker) {
+                const html = `
+                    <div class="vietmap-vehicle-root">
+                        <div class="vehicle-pulse-ring"></div>
+                        <div id="vehicle-rotator-el" class="vehicle-heading-rotator" style="transform: rotate(${headingDeg}deg);">
+                            <svg width="72" height="72" viewBox="0 0 72 72">
+                                <defs>
+                                    <linearGradient id="vietmapCone" x1="0%" y1="100%" x2="0%" y2="0%">
+                                        <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.62"/>
+                                        <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+                                    </linearGradient>
+                                </defs>
+                                <polygon points="36,36 14,4 58,4" fill="url(#vietmapCone)"/>
+                                <circle cx="36" cy="36" r="15.5" fill="#0284c7" stroke="#ffffff" stroke-width="3.2"/>
+                                <path d="M36 22 L44 43 L36 38.5 L28 43 Z" fill="#ffffff"/>
+                            </svg>
+                        </div>
+                        <div id="vehicle-live-pill" class="${speedBadgeClass}">${currentSpeed} km/h</div>
+                    </div>
+                `;
+                const icon = L.divIcon({
+                    className: 'vietmap-vehicle-divicon',
+                    html,
+                    iconSize: [76, 76],
+                    iconAnchor: [38, 38]
+                });
+                vehicleMarker = L.marker(pos, { icon, zIndexOffset: 3000 }).addTo(map);
+            } else {
+                vehicleMarker.setLatLng(pos);
+                const rotEl = document.getElementById('vehicle-rotator-el');
+                if (rotEl) rotEl.style.transform = `rotate(${headingDeg}deg)`;
+                const pillEl = document.getElementById('vehicle-live-pill');
+                if (pillEl) {
+                    pillEl.textContent = `${currentSpeed} km/h`;
+                    pillEl.className = speedBadgeClass;
+                }
+            }
+        }
+
+        // Nạp lộ trình thực tế qua các trục đường chính TP. Vinh & 24 điểm cảnh báo chuẩn Nghệ An
+        async function loadAuthenticNgheAnRouteAndSigns() {
+            activeRoadName = 'Lê Duẩn - Quang Trung - Đại lộ Lê Nin, TP. Vinh';
+            buildDenseRouteFromLatLngs(VINH_AUTHENTIC_ROUTE_ANCHORS, 'Lộ trình thực tế TP. Vinh, Nghệ An', false);
+            syncNgheAnSignsWithCurrentRoute();
+
+            // Gọi OSRM để lấy hình học bám sát mặt đường thật tại TP. Vinh
+            try {
+                const keyWaypoints = [
+                    [18.6438, 105.7068], // Trạm Bến Thủy
+                    [18.6591, 105.6953], // Ngã tư ĐH Vinh
+                    [18.6715, 105.6872], // Vòng xuyến Hải Quan
+                    [18.6682, 105.6748], // Ngã tư Chợ Vinh
+                    [18.6852, 105.6741], // Ngã tư Ga Vinh
+                    [18.6838, 105.6885], // Đại lộ Lê Nin - Nguyễn Sỹ Sách
+                    [18.7015, 105.6928], // BV Đa khoa Nghệ An
+                    [18.7335, 105.6765], // Sân bay Vinh
+                    [18.6852, 105.6741], // Ga Vinh
+                    [18.6591, 105.6953]  // ĐH Vinh
+                ];
+                const queryStr = keyWaypoints.map(p => `${p[1]},${p[0]}`).join(';');
+                const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${queryStr}?overview=full&geometries=geojson`);
+                if (resp.ok) {
+                    const json = await resp.json();
+                    if (json.routes && json.routes[0] && json.routes[0].geometry.coordinates.length > 8) {
+                        const osrmCoords = json.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
+                        buildDenseRouteFromLatLngs(osrmCoords, 'Lê Duẩn → Quang Trung → Đại lộ Lê Nin (TP. Vinh)', false);
+                        syncNgheAnSignsWithCurrentRoute();
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Gắn khoảng cách dọc lộ trình (routeDist) cho toàn bộ 24 biển báo thực tế tại Nghệ An
+        function syncNgheAnSignsWithCurrentRoute() {
+            roadSignsDatabase = NGHE_AN_AUTHENTIC_SIGNS.map(sign => {
+                let bestRouteDist = null;
+                let minDistanceToRoute = Infinity;
+
+                for (let i = 0; i < routePoints.length; i += 2) {
+                    const d = haversineMeters(sign.lat, sign.lng, routePoints[i].lat, routePoints[i].lng);
+                    if (d < minDistanceToRoute) {
+                        minDistanceToRoute = d;
+                        bestRouteDist = routePoints[i].cumDist;
+                    }
+                }
+                return {
+                    ...sign,
+                    routeDist: minDistanceToRoute <= 450 ? bestRouteDist : null
+                };
+            });
+
+            // Đặt vị trí xuất phát của xe ngay trước Ngã tư Đại học Vinh 160m để người dùng thấy ngay cảnh báo thực tế
+            const dhVinhSign = roadSignsDatabase.find(s => s.id === 'na_real_3');
+            if (dhVinhSign && typeof dhVinhSign.routeDist === 'number') {
+                traveledMeters = Math.max(0, dhVinhSign.routeDist - 160);
+                const pose = sampleRouteAtDistance(traveledMeters);
+                currentLat = pose.lat;
+                currentLng = pose.lng;
+                currentHeading = pose.bearing;
+                updateOrCreateVehicleMarker(currentLat, currentLng, currentHeading, 14);
+                if (map) map.setView([currentLat, currentLng], 16);
+            }
+
+            renderAllSignsOnMap();
+        }
+
+        // Khi người dùng ở tỉnh thành khác ngoài Nghệ An hoặc bấm Quét biển quanh vị trí thực tế
+        function generateLocalSignsAroundRealUser(centerLat, centerLng, areaLabel = 'Vị trí hiện tại của bạn') {
+            // Kiểm tra xem người dùng có đang ở gần Nghệ An (< 45km) không
+            const distToVinh = haversineMeters(centerLat, centerLng, 18.6796, 105.6828);
+            const preservedNgheAn = NGHE_AN_AUTHENTIC_SIGNS.map(s => ({ ...s, routeDist: null }));
+
+            if (distToVinh < 45000) {
+                roadSignsDatabase = preservedNgheAn;
+                syncNgheAnSignsWithCurrentRoute();
+                return;
+            }
+
+            // Nếu người dùng đang ở Hà Nội, TP.HCM hoặc tỉnh khác: Giữ nguyên 24 điểm Nghệ An VÀ tạo thêm cụm cảnh báo sát vị trí thực tế của người dùng
+            const localTemplates = [
+                { signCode: 'speed50', speedLimit: 50, title: 'Biển hạn chế tốc độ 50 km/h (P.127)', secondaryCode: 'no_overtake', secondaryLabel: 'Nội đô • 50km/h', hasRangeCircle: true },
+                { signCode: 'camera_ai', speedLimit: 50, title: 'Camera Phạt Nguội AI Giám Sát Giao Lộ', secondaryCode: 'camera_ai', secondaryLabel: 'Cam Phạt Nguội 50', hasRangeCircle: true },
+                { signCode: 'no_overtake', speedLimit: 50, title: 'Biển cấm vượt xe cơ giới (P.125)', secondaryCode: 'no_overtake', secondaryLabel: 'Cấm vượt (P.125)', hasRangeCircle: false },
+                { signCode: 'speed40', speedLimit: 40, title: 'Biển hạn chế tốc độ 40 km/h (Giao lộ)', secondaryCode: 'no_parking', secondaryLabel: 'Giới hạn 40km/h', hasRangeCircle: true },
+                { signCode: 'residential', speedLimit: 50, title: 'Biển bắt đầu Khu đông dân cư (R.420)', secondaryCode: 'residential', secondaryLabel: 'Khu dân cư 50km/h', hasRangeCircle: false },
+                { signCode: 'speed60', speedLimit: 60, title: 'Trục chính đô thị - Tốc độ tối đa 60 km/h', secondaryCode: 'camera_ai', secondaryLabel: 'Trục chính 60km/h', hasRangeCircle: true }
+            ];
+
+            const localSigns = localTemplates.map((tpl, idx) => {
+                const ratio = 0.08 + (idx / localTemplates.length) * 0.82;
+                const distOnRoute = totalRouteMeters * ratio;
+                const pt = sampleRouteAtDistance(distOnRoute);
+                return {
+                    id: 'local_gps_' + idx + '_' + Date.now(),
+                    lat: pt.lat,
+                    lng: pt.lng,
+                    routeDist: distOnRoute,
+                    signCode: tpl.signCode,
+                    speedLimit: tpl.speedLimit,
+                    title: tpl.title,
+                    road: areaLabel,
+                    secondaryCode: tpl.secondaryCode,
+                    secondaryLabel: tpl.secondaryLabel,
+                    hasRangeCircle: tpl.hasRangeCircle
+                };
+            });
+
+            roadSignsDatabase = [...localSigns, ...preservedNgheAn];
+            renderAllSignsOnMap();
+        }
+
+        // Xây dựng lộ trình khép kín quanh vị trí bất kỳ trên toàn quốc
+        async function generateCityLoopRouteAndSigns(centerLat, centerLng, roadLabel = 'Khu vực của bạn') {
+            activeRoadName = roadLabel;
+            const anchors = [
+                [centerLat, centerLng],
+                [centerLat + 0.0024, centerLng + 0.0017],
+                [centerLat + 0.0049, centerLng + 0.0033],
+                [centerLat + 0.0074, centerLng + 0.0049],
+                [centerLat + 0.0091, centerLng + 0.0021],
+                [centerLat + 0.0069, centerLng - 0.0014],
+                [centerLat + 0.0039, centerLng - 0.0030],
+                [centerLat + 0.0014, centerLng - 0.0016],
+                [centerLat, centerLng]
+            ];
+
+            buildDenseRouteFromLatLngs(anchors, `Lộ trình điều hướng ${roadLabel}`, false);
+            generateLocalSignsAroundRealUser(centerLat, centerLng, roadLabel);
+
+            try {
+                const queryStr = [
+                    `${centerLng},${centerLat}`,
+                    `${centerLng + 0.0033},${centerLat + 0.0049}`,
+                    `${centerLng + 0.0021},${centerLat + 0.0091}`,
+                    `${centerLng - 0.0030},${centerLat + 0.0039}`,
+                    `${centerLng},${centerLat}`
+                ].join(';');
+                const resp = await fetch(`https://router.project-osrm.org/route/v1/driving/${queryStr}?overview=full&geometries=geojson`);
+                if (resp.ok) {
+                    const json = await resp.json();
+                    if (json.routes && json.routes[0] && json.routes[0].geometry.coordinates.length > 6) {
+                        const osrmCoords = json.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
+                        buildDenseRouteFromLatLngs(osrmCoords, `Đi theo ${roadLabel}`, false);
+                        generateLocalSignsAroundRealUser(centerLat, centerLng, roadLabel);
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function buildDenseRouteFromLatLngs(rawLatLngs, instructionTitle = 'Đi thẳng theo lộ trình xanh', populateDefaultSigns = false) {
+            routePoints = [];
+            let cumDist = 0;
+
+            for (let i = 0; i < rawLatLngs.length - 1; i++) {
+                const a = rawLatLngs[i];
+                const b = rawLatLngs[i + 1];
+                const segLen = haversineMeters(a[0], a[1], b[0], b[1]);
+                const steps = Math.max(1, Math.ceil(segLen / 7));
+
+                for (let s = 0; s < steps; s++) {
+                    const t = s / steps;
+                    const lat = a[0] + (b[0] - a[0]) * t;
+                    const lng = a[1] + (b[1] - a[1]) * t;
+                    if (routePoints.length > 0) {
+                        const prev = routePoints[routePoints.length - 1];
+                        cumDist += haversineMeters(prev.lat, prev.lng, lat, lng);
+                    }
+                    routePoints.push({ lat, lng, cumDist });
+                }
+            }
+
+            const endPt = rawLatLngs[rawLatLngs.length - 1];
+            if (routePoints.length > 0) {
+                const prev = routePoints[routePoints.length - 1];
+                cumDist += haversineMeters(prev.lat, prev.lng, endPt[0], endPt[1]);
+            }
+            routePoints.push({ lat: endPt[0], lng: endPt[1], cumDist });
+
+            totalRouteMeters = Math.max(100, cumDist);
+            traveledMeters = 0;
+            traveledTrailCoords = [[currentLat, currentLng]];
+
+            // Vẽ Polyline lộ trình dẫn đường lên bản đồ
+            const latLngList = routePoints.map(p => [p.lat, p.lng]);
+            if (routeOuterPolyline) map.removeLayer(routeOuterPolyline);
+            if (routeInnerPolyline) map.removeLayer(routeInnerPolyline);
+            if (traveledTrailPolyline) map.removeLayer(traveledTrailPolyline);
+
+            routeOuterPolyline = L.polyline(latLngList, {
+                color: '#38bdf8',
+                weight: 11,
+                opacity: 0.28,
+                lineCap: 'round',
+                lineJoin: 'round'
+            }).addTo(map);
+
+            routeInnerPolyline = L.polyline(latLngList, {
+                color: '#0284c7',
+                weight: 5.5,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round'
+            }).addTo(map);
+
+            traveledTrailPolyline = L.polyline(traveledTrailCoords, {
+                color: '#10b981',
+                weight: 4.5,
+                opacity: 0.92,
+                dashArray: '2, 6'
+            }).addTo(map);
+
+            // Hiển thị Turn-by-Turn Banner
+            const tbtBanner = document.getElementById('turn-by-turn-banner');
+            if (tbtBanner) tbtBanner.classList.remove('hidden');
+            document.getElementById('tbt-instruction-title').textContent = instructionTitle;
+            updateTurnByTurnStats();
+
+            if (populateDefaultSigns) {
+                syncNgheAnSignsWithCurrentRoute();
+            }
+        }
+
+        function sampleRouteAtDistance(distMeters) {
+            if (!routePoints.length) {
+                return { lat: currentLat, lng: currentLng, bearing: currentHeading };
+            }
+            const wrapped = ((distMeters % totalRouteMeters) + totalRouteMeters) % totalRouteMeters;
+
+            for (let i = 0; i < routePoints.length - 1; i++) {
+                const cur = routePoints[i];
+                const nxt = routePoints[i + 1];
+                if (wrapped >= cur.cumDist && wrapped <= nxt.cumDist) {
+                    const seg = Math.max(0.0001, nxt.cumDist - cur.cumDist);
+                    const t = (wrapped - cur.cumDist) / seg;
+                    const lat = cur.lat + (nxt.lat - cur.lat) * t;
+                    const lng = cur.lng + (nxt.lng - cur.lng) * t;
+                    const bearing = computeBearing(cur.lat, cur.lng, nxt.lat, nxt.lng);
+                    return { lat, lng, bearing };
+                }
+            }
+            const last = routePoints[routePoints.length - 1];
+            return { lat: last.lat, lng: last.lng, bearing: currentHeading };
+        }
+
+        function renderAllSignsOnMap() {
+            if (!signsLayerGroup || !rangeCirclesLayerGroup) return;
+            signsLayerGroup.clearLayers();
+            rangeCirclesLayerGroup.clearLayers();
+
+            const countBadge = document.getElementById('pill-sign-count');
+            if (countBadge) countBadge.textContent = roadSignsDatabase.length;
+
+            roadSignsDatabase.forEach(sign => {
+                // Vẽ vòng tròn bán kính phát hiện 220m cho Camera phạt nguội & Biển tốc độ
+                if (sign.hasRangeCircle) {
+                    L.circle([sign.lat, sign.lng], {
+                        radius: 220,
+                        color: sign.signCode === 'camera_ai' ? '#ef4444' : '#f59e0b',
+                        weight: 1,
+                        dashArray: '4, 4',
+                        fillColor: sign.signCode === 'camera_ai' ? '#ef4444' : '#f59e0b',
+                        fillOpacity: 0.06,
+                        interactive: false
+                    }).addTo(rangeCirclesLayerGroup);
+                }
+
+                const svgIcon = buildQCVNSignSVG(sign, 36);
+                const shortCaption = sign.secondaryLabel ? sign.secondaryLabel.split('•')[0].trim() : `${sign.speedLimit} km/h`;
+
+                const html = `
+                    <div class="qcvn-map-sign">
+                        ${svgIcon}
+                        <div class="qcvn-sign-pole"></div>
+                        <div class="qcvn-sign-caption">${shortCaption}</div>
+                    </div>
+                `;
+
+                const divIcon = L.divIcon({
+                    className: 'qcvn-sign-leaflet-icon',
+                    html,
+                    iconSize: [54, 58],
+                    iconAnchor: [27, 48],
+                    popupAnchor: [0, -44]
+                });
+
+                const marker = L.marker([sign.lat, sign.lng], { icon: divIcon });
+                marker.bindPopup(`
+                    <div class="min-w-[220px]">
+                        <div class="flex items-center gap-2.5 pb-2 border-b border-slate-800">
+                            ${buildQCVNSignSVG(sign, 40)}
+                            <div>
+                                <div class="text-xs font-black text-white">${sign.title}</div>
+                                <div class="text-[10px] font-bold text-sky-400 mt-0.5">${sign.road}</div>
+                            </div>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] text-slate-300">
+                            <span>Giới hạn: <strong class="text-amber-300">${sign.speedLimit} km/h</strong></span>
+                            <span>Bán kính AI: <strong>250m</strong></span>
+                        </div>
+                        <div class="mt-2.5 flex items-center gap-1.5">
+                            <button onclick="driveThroughSign('${sign.id}')" class="flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 text-white font-black text-[10px]">
+                                🚗 Chạy thử qua biển
+                            </button>
+                            <button onclick="previewSignVoice('${sign.id}')" class="py-1.5 px-2.5 rounded-lg bg-sky-600 text-white font-bold text-[10px]">
+                                🔊 Đọc
+                            </button>
+                        </div>
+                    </div>
+                `);
+
+                signsLayerGroup.addLayer(marker);
+            });
+        }
+
+        // =========================================================================
+        // 4. BỘ MÁY CHUYỂN ĐỘNG 60FPS HỢP NHẤT (KHÔNG BAO GIỜ ĐỨNG YÊN VỊ TRÍ)
+        // =========================================================================
+        function unified60FPSLoop(now) {
+            const dtSec = Math.min(0.1, Math.max(0.001, (now - lastAnimTimestamp) / 1000));
+            lastAnimTimestamp = now;
+
+            try {
+                if (engineMode !== 'REAL_GPS' && currentSpeed > 0) {
+                    // Hệ số 2.5x giúp ở mức zoom 16 trên điện thoại thấy xe di chuyển rõ rệt từng mét
+                    const metersPerSec = (currentSpeed / 3.6) * 2.5;
+                    const stepMeters = metersPerSec * dtSec;
+
+                    if (engineMode === 'SIM_FREE') {
+                        // Lái tự do khi bấm nút Lái trái / Lái phải
+                        const nextPt = offsetCoordByBearing(currentLat, currentLng, currentHeading, stepMeters);
+                        currentLat = nextPt.lat;
+                        currentLng = nextPt.lng;
+                    } else {
+                        // Lái bám theo tuyến đường dẫn đường màu xanh
+                        traveledMeters = (traveledMeters + stepMeters) % totalRouteMeters;
+                        const pose = sampleRouteAtDistance(traveledMeters);
+                        currentLat = pose.lat;
+                        currentLng = pose.lng;
+                        currentHeading = pose.bearing;
+                    }
+
+                    // Cập nhật Marker Xe 3D & Vệt đường màu xanh lá đã đi qua
+                    updateOrCreateVehicleMarker(currentLat, currentLng, currentHeading, 14);
+
+                    if (
+                        traveledTrailCoords.length === 0 ||
+                        haversineMeters(
+                            traveledTrailCoords[traveledTrailCoords.length - 1][0],
+                            traveledTrailCoords[traveledTrailCoords.length - 1][1],
+                            currentLat,
+                            currentLng
+                        ) > 6
+                    ) {
+                        traveledTrailCoords.push([currentLat, currentLng]);
+                        if (traveledTrailCoords.length > 180) traveledTrailCoords.shift();
+                        if (traveledTrailPolyline) traveledTrailPolyline.setLatLngs(traveledTrailCoords);
+                    }
+
+                    // Tự động căn tâm bản đồ bám theo xe
+                    if (autoFollowVehicle && map) {
+                        map.panTo([currentLat, currentLng], { animate: false });
+                    }
+
+                    updateTurnByTurnStats();
+                }
+
+                // Quét biển báo phía trước (AI Recognition) & Kiểm tra quá tốc độ ở mỗi khung hình
+                evaluateProximityAndOverspeed();
+            } catch (err) {
+                console.error('60FPS loop error:', err);
+            }
+
+            requestAnimationFrame(unified60FPSLoop);
+        }
+
+        function updateTurnByTurnStats() {
+            const remainMeters = Math.max(0, totalRouteMeters - traveledMeters);
+            const remainKm = (remainMeters / 1000).toFixed(1);
+            const calcSpeed = Math.max(25, currentSpeed);
+            const etaMin = Math.max(1, Math.round((remainMeters / 1000) / calcSpeed * 60));
+
+            const distEl = document.getElementById('tbt-remain-distance');
+            const etaEl = document.getElementById('tbt-eta-minutes');
+            if (distEl) distEl.textContent = `Còn ${remainKm} km`;
+            if (etaEl) etaEl.textContent = `ETA ${etaMin} phút`;
+        }
+
+        // =========================================================================
+        // 5. AI TỰ ĐỘNG NHẬN DIỆN BIỂN BÁO (<= 250M) & CẢNH BÁO QUÁ TỐC ĐỘ ĐA TẦNG
+        // =========================================================================
+        function evaluateProximityAndOverspeed() {
+            // Cập nhật góc hướng la bàn trên HUD
+            const dirs = ['B', 'ĐB', 'Đ', 'ĐN', 'N', 'TN', 'T', 'TB'];
+            const dirLabel = dirs[Math.round(currentHeading / 45) % 8];
+            const headingTag = document.getElementById('hud-heading-tag');
+            if (headingTag) headingTag.textContent = `${Math.round(currentHeading)}° ${dirLabel}`;
+
+            let nearestSign = null;
+
+            if (roadSignsDatabase.length > 0) {
+                const scored = roadSignsDatabase.map(sign => {
+                    const directMeters = Math.round(haversineMeters(currentLat, currentLng, sign.lat, sign.lng));
+                    let aheadMeters = directMeters;
+                    if (engineMode === 'SIM_ROUTE' && typeof sign.routeDist === 'number') {
+                        let diff = sign.routeDist - traveledMeters;
+                        if (diff < -25) diff += totalRouteMeters;
+                        aheadMeters = Math.min(directMeters, Math.max(0, Math.round(diff)));
+                    }
+                    return { ...sign, directMeters, aheadMeters };
+                }).sort((a, b) => a.aheadMeters - b.aheadMeters);
+
+                nearestSign = scored[0];
+            }
+
+            if (nearestSign) {
+                const distMeters = nearestSign.aheadMeters;
+
+                // Cập nhật hộp Radar Biển Báo Phía Trước (Góc trên bên phải)
+                const distBadge = document.getElementById('upcoming-dist-badge');
+                const iconBox = document.getElementById('upcoming-sign-icon');
+                const nameEl = document.getElementById('upcoming-sign-name');
+                const roadEl = document.getElementById('upcoming-sign-road');
+                const barEl = document.getElementById('upcoming-dist-bar');
+
+                if (distBadge) distBadge.textContent = `${distMeters}m`;
+                if (iconBox) iconBox.innerHTML = buildQCVNSignSVG(nearestSign, 34);
+                if (nameEl) nameEl.textContent = nearestSign.title;
+                if (roadEl) roadEl.textContent = `${nearestSign.road} • Giới hạn ${nearestSign.speedLimit}km/h`;
+                if (barEl) {
+                    const progress = Math.max(8, Math.min(100, Math.round((1 - Math.min(distMeters, 300) / 300) * 100)));
+                    barEl.style.width = `${progress}%`;
+                }
+
+                // AI Tự động nhận diện biển báo khi xe đi vào bán kính <= 250m
+                if (distMeters <= 250) {
+                    const previousLimit = activeRoadLimit;
+                    activeRoadLimit = nearestSign.speedLimit || 50;
+                    activeSecondaryCode = nearestSign.secondaryCode || nearestSign.signCode;
+                    activeSecondaryLabel = nearestSign.secondaryLabel || `Giới hạn ${activeRoadLimit} km/h`;
+
+                    if (lastAutoDetectedSignId !== nearestSign.id) {
+                        lastAutoDetectedSignId = nearestSign.id;
+                        const aiBadge = document.getElementById('ai-detect-badge');
+                        if (aiBadge) {
+                            aiBadge.classList.add('ai-badge-highlight');
+                            setTimeout(() => aiBadge.classList.remove('ai-badge-highlight'), 3500);
+                        }
+                        if (previousLimit !== activeRoadLimit && currentSpeed <= activeRoadLimit) {
+                            playProximityChime();
+                            speakVietnameseAlert(`AI tự động nhận diện ${nearestSign.title}. Tốc độ tối đa ${activeRoadLimit} ki lô mét trên giờ.`);
+                        }
+                    }
+
+                    // Phát cảnh báo giọng nói khi tiến sát <= 165m
+                    if (
+                        distMeters <= 165 &&
+                        lastVoiceAlertSignId !== nearestSign.id &&
+                        (Date.now() - lastVoiceAlertTime > 8500)
+                    ) {
+                        lastVoiceAlertSignId = nearestSign.id;
+                        lastVoiceAlertTime = Date.now();
+                        playProximityChime();
+                        triggerHaptic('warning');
+                        if (currentSpeed <= activeRoadLimit) {
+                            speakVietnameseAlert(`Chú ý, phía trước cách ${distMeters} mét có ${nearestSign.title}.`);
+                        }
+                    }
+                }
+            }
+
+            // Cập nhật Biển Tốc Độ P.127 & Biển Phụ trên HUD
+            const limitCircle = document.getElementById('hud-limit-circle');
+            const secSignBox = document.getElementById('hud-secondary-sign');
+            const limitCaption = document.getElementById('hud-limit-caption');
+            if (limitCircle) limitCircle.textContent = activeRoadLimit;
+            if (secSignBox) secSignBox.innerHTML = buildQCVNSignSVG(activeSecondaryCode, 28, activeRoadLimit);
+            if (limitCaption) limitCaption.textContent = activeSecondaryLabel;
+
+            // Đánh giá 3 cấp độ tốc độ (An toàn / Sát ngưỡng / Vượt quá tốc độ)
+            updateThreeTierSpeedometerAndAlerts(nearestSign);
+        }
+
+        function updateThreeTierSpeedometerAndAlerts(nearestSign) {
+            const speedCard = document.getElementById('hud-speedometer-card');
+            const safetyBadge = document.getElementById('hud-safety-badge');
+            const speedNum = document.getElementById('hud-speed-number');
+            const limitCircle = document.getElementById('hud-limit-circle');
+            const redVignette = document.getElementById('overspeed-vignette');
+            const floatBanner = document.getElementById('floating-warning-banner');
+            const floatSign = document.getElementById('floating-warning-sign');
+            const floatTag = document.getElementById('floating-warning-tag');
+            const floatSubtag = document.getElementById('floating-warning-subtag');
+            const floatMsg = document.getElementById('floating-warning-message');
+            const sliderEl = document.getElementById('throttle-slider');
+            const throttleReadout = document.getElementById('throttle-readout');
+
+            if (speedNum) speedNum.textContent = currentSpeed;
+            if (sliderEl && document.activeElement !== sliderEl) sliderEl.value = Math.min(120, currentSpeed);
+            if (throttleReadout) throttleReadout.textContent = `${currentSpeed} km/h`;
+
+            const overDelta = currentSpeed - activeRoadLimit;
+            const nearThreshold = Math.floor(activeRoadLimit * 0.9);
+
+            // CẤP 3: VƯỢT QUÁ TỐC ĐỘ CHO PHÉP (currentSpeed > activeRoadLimit)
+            if (overDelta > 0) {
+                if (speedCard) {
+                    speedCard.className = 'col-span-4 bg-red-600/95 backdrop-blur-md border-2 border-yellow-300 rounded-2xl px-2.5 py-2 shadow-2xl flex flex-col justify-between relative overflow-hidden overspeed-glow-pulse transition-all duration-200';
+                }
+                if (safetyBadge) {
+                    safetyBadge.textContent = `VƯỢT +${overDelta} KM/H`;
+                    safetyBadge.className = 'px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-yellow-300 text-slate-950';
+                }
+                if (speedNum) speedNum.className = 'text-3xl sm:text-4xl font-black text-white leading-none tracking-tight';
+                if (throttleReadout) throttleReadout.className = 'text-[11px] font-black text-rose-400 min-w-[48px]';
+                if (limitCircle) limitCircle.classList.add('speed-sign-shaking');
+                if (redVignette) redVignette.classList.remove('hidden');
+
+                // Hiện Floating Alert Banner Quá Tốc Độ
+                if (floatBanner) {
+                    floatBanner.classList.remove('hidden');
+                    if (floatSign) floatSign.innerHTML = buildQCVNSignSVG('speed' + activeRoadLimit, 38, activeRoadLimit);
+                    if (floatTag) floatTag.textContent = 'CẢNH BÁO QUÁ TỐC ĐỘ';
+                    if (floatSubtag) floatSubtag.textContent = `VƯỢT +${overDelta} KM/H`;
+                    if (floatMsg) floatMsg.textContent = `Đang chạy ${currentSpeed} km/h • Giới hạn cho phép ${activeRoadLimit} km/h!`;
+                }
+
+                // Phát còi báo động tần số kép & Giọng nói tiếng Việt có Cooldown
+                const now = Date.now();
+                if (now - lastOverspeedBeepTime > 2300) {
+                    lastOverspeedBeepTime = now;
+                    playDualToneOverspeedAlarm();
+                    triggerHaptic('error');
+                }
+                if (now - lastOverspeedSpeechTime > 9000) {
+                    lastOverspeedSpeechTime = now;
+                    speakVietnameseAlert(`Cảnh báo! Bạn đang chạy quá tốc độ cho phép ${currentSpeed} trên ${activeRoadLimit} ki lô mét trên giờ. Vui lòng giảm tốc độ!`);
+                }
+            }
+            // CẤP 2: SÁT NGƯỠNG TỐC ĐỘ (90% - 100% giới hạn)
+            else if (currentSpeed >= nearThreshold && currentSpeed > 0) {
+                if (speedCard) {
+                    speedCard.className = 'col-span-4 bg-slate-900/95 backdrop-blur-md border-2 border-amber-400 rounded-2xl px-2.5 py-2 shadow-2xl flex flex-col justify-between relative overflow-hidden transition-all duration-200';
+                }
+                if (safetyBadge) {
+                    safetyBadge.textContent = 'SÁT NGƯỠNG';
+                    safetyBadge.className = 'px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-amber-500/25 text-amber-300 border border-amber-400/50';
+                }
+                if (speedNum) speedNum.className = 'text-3xl sm:text-4xl font-black text-amber-400 leading-none tracking-tight';
+                if (throttleReadout) throttleReadout.className = 'text-[11px] font-black text-amber-400 min-w-[48px]';
+                if (limitCircle) limitCircle.classList.remove('speed-sign-shaking');
+                if (redVignette) redVignette.classList.add('hidden');
+
+                // Nếu đang tới gần biển báo <= 150m thì hiện banner nhắc nhở
+                if (nearestSign && nearestSign.aheadMeters <= 150 && floatBanner) {
+                    floatBanner.classList.remove('hidden');
+                    if (floatSign) floatSign.innerHTML = buildQCVNSignSVG(nearestSign, 38);
+                    if (floatTag) floatTag.textContent = 'CHÚ Ý BIỂN PHÍA TRƯỚC';
+                    if (floatSubtag) floatSubtag.textContent = `Cách ${nearestSign.aheadMeters}m`;
+                    if (floatMsg) floatMsg.textContent = `${nearestSign.title} (${nearestSign.road})`;
+                } else if (floatBanner) {
+                    floatBanner.classList.add('hidden');
+                }
+            }
+            // CẤP 1: AN TOÀN (< 90% giới hạn)
+            else {
+                if (speedCard) {
+                    speedCard.className = 'col-span-4 bg-slate-900/95 backdrop-blur-md border-2 border-emerald-500/70 rounded-2xl px-2.5 py-2 shadow-2xl flex flex-col justify-between relative overflow-hidden transition-all duration-200';
+                }
+                if (safetyBadge) {
+                    safetyBadge.textContent = 'AN TOÀN';
+                    safetyBadge.className = 'px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+                }
+                if (speedNum) speedNum.className = 'text-3xl sm:text-4xl font-black text-emerald-400 leading-none tracking-tight';
+                if (throttleReadout) throttleReadout.className = 'text-[11px] font-black text-emerald-400 min-w-[48px]';
+                if (limitCircle) limitCircle.classList.remove('speed-sign-shaking');
+                if (redVignette) redVignette.classList.add('hidden');
+
+                if (nearestSign && nearestSign.aheadMeters <= 130 && floatBanner) {
+                    floatBanner.classList.remove('hidden');
+                    if (floatSign) floatSign.innerHTML = buildQCVNSignSVG(nearestSign, 38);
+                    if (floatTag) floatTag.textContent = 'BIỂN BÁO SẮP TỚI';
+                    if (floatSubtag) floatSubtag.textContent = `Cách ${nearestSign.aheadMeters}m`;
+                    if (floatMsg) floatMsg.textContent = `${nearestSign.title} • Giới hạn ${nearestSign.speedLimit} km/h`;
+                } else if (floatBanner) {
+                    floatBanner.classList.add('hidden');
+                }
+            }
+        }
+
+        // =========================================================================
+        // 6. ĐIỀU KHIỂN LÁI XE, TEST QUÁ TỐC ĐỘ & CHUYỂN ĐỔI GPS THỰC TẾ
+        // =========================================================================
+        function handleThrottleSlide(val) {
+            currentSpeed = parseInt(val, 10) || 0;
+            if (engineMode === 'REAL_GPS') {
+                engineMode = 'SIM_ROUTE';
+                updateModePillUI();
+            }
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            evaluateProximityAndOverspeed();
+        }
+
+        function applyPresetSpeed(spd) {
+            currentSpeed = spd;
+            if (engineMode === 'REAL_GPS') {
+                engineMode = 'SIM_ROUTE';
+                updateModePillUI();
+            }
+            const slider = document.getElementById('throttle-slider');
+            if (slider) slider.value = spd;
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            if (spd > activeRoadLimit) {
+                lastOverspeedBeepTime = 0;
+                lastOverspeedSpeechTime = 0;
+            }
+            evaluateProximityAndOverspeed();
+            showToast(spd === 0 ? '⏹ Đã dừng xe (0 km/h).' : `🚗 Xe đang chạy ở tốc độ ${spd} km/h!`);
+        }
+
+        function triggerInstantOverspeedTest() {
+            const testSpd = activeRoadLimit + 20;
+            currentSpeed = testSpd;
+            if (engineMode === 'REAL_GPS') {
+                engineMode = 'SIM_ROUTE';
+                updateModePillUI();
+            }
+            const slider = document.getElementById('throttle-slider');
+            if (slider) slider.value = Math.min(120, testSpd);
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            lastOverspeedBeepTime = 0;
+            lastOverspeedSpeechTime = 0;
+            evaluateProximityAndOverspeed();
+            showToast(`🔥 Đang Test Quá Tốc Độ: ${testSpd} km/h trên đường giới hạn ${activeRoadLimit} km/h!`);
+        }
+
+        function decelerateMinus20() {
+            currentSpeed = Math.max(0, Math.min(currentSpeed - 20, activeRoadLimit - 5));
+            const slider = document.getElementById('throttle-slider');
+            if (slider) slider.value = currentSpeed;
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+            evaluateProximityAndOverspeed();
+            showToast(`✅ Đã giảm ga xuống ${currentSpeed} km/h (An toàn).`);
+        }
+
+        function steerVehicle(deltaDeg) {
+            currentHeading = (currentHeading + deltaDeg + 360) % 360;
+            engineMode = 'SIM_FREE';
+            if (currentSpeed < 30) currentSpeed = 45;
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            updateModePillUI();
+            showToast(`🛞 Đã đánh lái hướng ${Math.round(currentHeading)}° (Lái tự do)`);
+        }
+
+        function recenterAndFollowVehicle() {
+            autoFollowVehicle = true;
+            if (engineMode === 'SIM_FREE') engineMode = 'SIM_ROUTE';
+            updateFollowButtonStyle();
+            updateModePillUI();
+            if (map) map.setView([currentLat, currentLng], 16, { animate: true });
+            showToast('📍 Đã khoá tâm bản đồ bám sát theo xe!');
+        }
+
+        function updateFollowButtonStyle() {
+            const btn = document.getElementById('recenter-car-btn');
+            if (!btn) return;
+            if (autoFollowVehicle) {
+                btn.className = 'px-2 py-1 rounded-lg bg-sky-600 text-white border border-sky-400 text-[10px] font-black active:scale-90 transition';
+            } else {
+                btn.className = 'px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-600 text-[10px] font-bold active:scale-90 transition';
+            }
+        }
+
+        // Chuyển đổi giữa Chế độ Lái thử 60FPS và Định vị GPS Thực Tế
+        function toggleGpsOrSimMode() {
+            if (engineMode === 'REAL_GPS') {
+                engineMode = 'SIM_ROUTE';
+                if (currentSpeed < 35) currentSpeed = 45;
+                autoFollowVehicle = true;
+                updateModePillUI();
+                showToast('🚀 Đã chuyển sang chế độ Lái thử 60FPS mượt mà!');
+            } else {
+                activateRealHardwareGPS();
+            }
+        }
+
+        function activateRealHardwareGPS() {
+            showToast('📡 Đang xin phép & kết nối GPS thực tế trên thiết bị của bạn...');
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+
+            // Sử dụng LocationManager của Telegram nếu có hoặc Geolocation chuẩn của thiết bị
+            if (!navigator.geolocation) {
+                fallbackIpGeolocation();
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    engineMode = 'REAL_GPS';
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    const acc = pos.coords.accuracy || 15;
+                    const rawSpd = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
+                    const hdg = pos.coords.heading || currentHeading;
+
+                    currentLat = lat;
+                    currentLng = lng;
+                    currentSpeed = rawSpd;
+                    currentHeading = hdg;
+
+                    updateModePillUI();
+                    generateCityLoopRouteAndSigns(lat, lng, 'Tuyến đường tại vị trí GPS máy của bạn');
+                    updateOrCreateVehicleMarker(lat, lng, hdg, acc);
+                    if (map) map.setView([lat, lng], 16, { animate: true });
+                    triggerHaptic('success');
+                    showToast(`✅ Đã khóa vị trí GPS máy (±${Math.round(acc)}m) & kích hoạt cảnh báo đúng vị trí!`);
+                    speakVietnameseAlert('Đã kết nối định vị G P S thực tế của thiết bị. Hệ thống cảnh báo biển báo và tốc độ quanh vị trí của bạn đã sẵn sàng.');
+
+                    if (realGpsWatchId === null) {
+                        realGpsWatchId = navigator.geolocation.watchPosition(
+                            (p) => {
+                                if (engineMode !== 'REAL_GPS') return;
+                                const nLat = p.coords.latitude;
+                                const nLng = p.coords.longitude;
+                                const nAcc = p.coords.accuracy || 15;
+                                const ts = p.timestamp || Date.now();
+                                const spdKmh = computeKalmanGpsSpeed(nLat, nLng, p.coords.speed, nAcc, ts);
+                                const nHdg = (p.coords.heading !== null && !isNaN(p.coords.heading))
+                                    ? p.coords.heading
+                                    : (lastRealGpsCoord ? computeBearing(lastRealGpsCoord.lat, lastRealGpsCoord.lng, nLat, nLng) : currentHeading);
+
+                                lastRealGpsCoord = { lat: nLat, lng: nLng };
+                                lastRealGpsTime = ts;
+
+                                currentLat = nLat;
+                                currentLng = nLng;
+                                currentSpeed = spdKmh;
+                                currentHeading = nHdg;
+                                updateOrCreateVehicleMarker(nLat, nLng, nHdg, nAcc);
+                                if (autoFollowVehicle && map) map.panTo([nLat, nLng]);
+                            },
+                            () => {},
+                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 500 }
+                        );
+                    }
+                },
+                () => {
+                    fallbackIpGeolocation();
+                },
+                { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+            );
+        }
+
+        async function fallbackIpGeolocation() {
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.latitude && data.longitude) {
+                        currentLat = parseFloat(data.latitude);
+                        currentLng = parseFloat(data.longitude);
+                        generateCityLoopRouteAndSigns(currentLat, currentLng, `${data.city || 'Vị trí mạng của bạn'}`);
+                        if (map) map.setView([currentLat, currentLng], 16, { animate: true });
+                        showToast(`📍 Đã định vị khu vực ${data.city || 'Việt Nam'} & quét biển báo quanh bạn!`);
+                        return;
+                    }
+                }
+            } catch (e) {}
+            showToast('⚠️ Thiết bị chưa cấp quyền GPS, đang chạy lộ trình thực tế tại TP. Vinh - Nghệ An.');
+        }
+
+        function computeKalmanGpsSpeed(lat, lng, dopplerMs, accuracy, timestamp) {
+            let rawKmh = 0;
+            if (dopplerMs !== null && dopplerMs !== undefined && !isNaN(dopplerMs) && dopplerMs >= 0) {
+                rawKmh = dopplerMs * 3.6;
+            } else if (lastRealGpsCoord && lastRealGpsTime > 0) {
+                const dt = (timestamp - lastRealGpsTime) / 1000;
+                if (dt >= 0.4 && dt < 25) {
+                    const dMeters = haversineMeters(lastRealGpsCoord.lat, lastRealGpsCoord.lng, lat, lng);
+                    if (dMeters > Math.max(2.2, accuracy * 0.22)) {
+                        rawKmh = (dMeters / dt) * 3.6;
+                    }
+                }
+            }
+            if (rawKmh > 180) rawKmh = kalmanSpeedKmh;
+            kalmanSpeedKmh = kalmanSpeedKmh * 0.35 + rawKmh * 0.65;
+            if (kalmanSpeedKmh < 2.2) kalmanSpeedKmh = 0;
+            return Math.round(kalmanSpeedKmh);
+        }
+
+        function updateModePillUI() {
+            const modeBtn = document.getElementById('pill-mode-btn');
+            const modeTxt = document.getElementById('pill-mode-text');
+            const hudTag = document.getElementById('hud-gps-mode-tag');
+
+            if (engineMode === 'REAL_GPS') {
+                if (modeBtn) modeBtn.className = 'shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-sky-600 text-white border border-sky-300 shadow-lg flex items-center gap-1 active:scale-95 transition';
+                if (modeTxt) modeTxt.textContent = '📡 GPS Máy Thực Tế';
+                if (hudTag) hudTag.textContent = '📡 GPS Máy';
+            } else if (engineMode === 'SIM_FREE') {
+                if (modeBtn) modeBtn.className = 'shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-amber-500 text-slate-950 border border-amber-300 shadow-lg flex items-center gap-1 active:scale-95 transition';
+                if (modeTxt) modeTxt.textContent = '🛞 Lái tự do 60FPS';
+                if (hudTag) hudTag.textContent = '🛞 Lái tự do';
+            } else {
+                if (modeBtn) modeBtn.className = 'shrink-0 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-emerald-600 text-white border border-emerald-400 shadow-lg flex items-center gap-1 active:scale-95 transition';
+                if (modeTxt) modeTxt.textContent = '🚀 Lái thử Nghệ An';
+                if (hudTag) hudTag.textContent = '🚀 Lái thử 60FPS';
+            }
+        }
+
+        // =========================================================================
+        // 7. TÌM KIẾM ĐỊA ĐIỂM NOMINATIM & CHỈ ĐƯỜNG TURN-BY-TURN OSRM
+        // =========================================================================
+        async function searchDestinationAndRoute() {
+            const input = document.getElementById('destination-search-input');
+            const query = (input ? input.value : '').trim();
+            if (!query) {
+                showToast('🔍 Vui lòng nhập tên đường hoặc địa điểm cần đi tới!');
+                return;
+            }
+
+            showToast(`🧭 Đang tìm đường tới "${query}"...`);
+            try {
+                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=vn&limit=1`;
+                const res = await fetch(url);
+                const list = await res.json();
+                if (list && list.length > 0) {
+                    const destLat = parseFloat(list[0].lat);
+                    const destLng = parseFloat(list[0].lon);
+                    const shortName = list[0].display_name.split(',')[0];
+                    await calculateAndStartRoute(currentLat, currentLng, destLat, destLng, shortName);
+                    return;
+                }
+            } catch (e) {}
+
+            // Dự phòng tức thì nếu Nominatim bị giới hạn mạng
+            const fallbackDestLat = currentLat + 0.0082;
+            const fallbackDestLng = currentLng + 0.0064;
+            await calculateAndStartRoute(currentLat, currentLng, fallbackDestLat, fallbackDestLng, query);
+        }
+
+        async function calculateAndStartRoute(fromLat, fromLng, toLat, toLng, destName) {
+            engineMode = 'SIM_ROUTE';
+            if (currentSpeed < 35) {
+                currentSpeed = 48;
+                const slider = document.getElementById('throttle-slider');
+                if (slider) slider.value = 48;
+            }
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            updateModePillUI();
+
+            // Tạo lộ trình nội suy tức thì để xe di chuyển ngay lập tức
+            const fallbackAnchors = [
+                [fromLat, fromLng],
+                [fromLat + (toLat - fromLat) * 0.35, fromLng + (toLng - fromLng) * 0.3],
+                [fromLat + (toLat - fromLat) * 0.7, fromLng + (toLng - fromLng) * 0.68],
+                [toLat, toLng]
+            ];
+            buildDenseRouteFromLatLngs(fallbackAnchors, `Đi tới ${destName}`, false);
+            syncNgheAnSignsWithCurrentRoute();
+
+            // Gọi OSRM lấy lộ trình thực tế trên mặt đường
+            try {
+                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&steps=true`;
+                const resp = await fetch(osrmUrl);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.routes && data.routes[0] && data.routes[0].geometry.coordinates.length > 2) {
+                        const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                        buildDenseRouteFromLatLngs(coords, `Dẫn đường tới ${destName}`, false);
+                        syncNgheAnSignsWithCurrentRoute();
+                    }
+                }
+            } catch (e) {}
+
+            showToast(`🛣️ Đã bật dẫn đường Turn-by-Turn tới: ${destName}`);
+            speakVietnameseAlert(`Bắt đầu dẫn đường tới ${destName}. Chúc bạn thượng lộ bình an.`);
+        }
+
+        function cancelActiveNavigation() {
+            const banner = document.getElementById('turn-by-turn-banner');
+            if (banner) banner.classList.add('hidden');
+            showToast('✖️ Đã ẩn thanh chỉ dẫn lộ trình.');
+        }
+
+        // =========================================================================
+        // 8. GÓC NHÌN 3D, CHẾ ĐỘ VỆ TINH TOÀN VIỆT NAM, QUÉT BIỂN & BÁO CÁO CỘNG ĐỒNG
+        // =========================================================================
+        function toggle3DPerspective() {
+            is3DPerspective = !is3DPerspective;
+            const wrapper = document.getElementById('map-perspective-wrapper');
+            const btn = document.getElementById('pill-3d-btn');
+            if (is3DPerspective) {
+                wrapper.classList.add('view-3d-active');
+                if (btn) btn.innerHTML = '<span>📐 Góc 3D: Bật</span>';
+                showToast('📐 Đã bật góc nhìn 3D nghiêng chuẩn Vietmap Live Pro!');
+            } else {
+                wrapper.classList.remove('view-3d-active');
+                if (btn) btn.innerHTML = '<span>📐 Góc 3D: Tắt</span>';
+                showToast('🗺️ Đã chuyển về góc nhìn phẳng 2D.');
+            }
+            setTimeout(() => { if (map) map.invalidateSize(); }, 450);
+        }
+
+        function setBaseMapLayer(idx) {
+            currentTileIndex = idx % BASE_MAP_LAYERS.length;
+            const layerCfg = BASE_MAP_LAYERS[currentTileIndex];
+            if (activeTileLayer && map) map.removeLayer(activeTileLayer);
+            activeTileLayer = createMapLayerByIndex(currentTileIndex).addTo(map);
+            const txt = document.getElementById('pill-map-text');
+            if (txt) txt.textContent = `🗺️ Nền: ${layerCfg.label}`;
+            showToast(`🛰️ Đã bật chế độ bản đồ: ${layerCfg.label}`);
+        }
+
+        function cycleBaseMapLayer() {
+            setBaseMapLayer((currentTileIndex + 1) % BASE_MAP_LAYERS.length);
+        }
+
+        function viewWholeVietnamSatellite() {
+            closeCityQuickPicker();
+            autoFollowVehicle = false;
+            updateFollowButtonStyle();
+            setBaseMapLayer(0); // Bật Vệ Tinh Hybrid VN
+            if (map) {
+                map.setView([16.2, 106.8], 6, { animate: true });
+            }
+            showToast('🇻🇳 Đang xem chế độ Vệ Tinh Hybrid Toàn Bản Đồ Việt Nam! Chạm vào điểm bất kỳ để phóng to.');
+        }
+
+        function relocateToNgheAnArea(lat, lng, roadTitle) {
+            closeCityQuickPicker();
+            currentLat = lat;
+            currentLng = lng;
+            engineMode = 'SIM_ROUTE';
+            if (currentSpeed < 40) currentSpeed = 48;
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            updateModePillUI();
+            loadAuthenticNgheAnRouteAndSigns();
+
+            // Đưa xe tới đúng địa điểm thực tế tại Nghệ An vừa chọn
+            let bestDist = 0;
+            let minD = Infinity;
+            for (let i = 0; i < routePoints.length; i++) {
+                const d = haversineMeters(lat, lng, routePoints[i].lat, routePoints[i].lng);
+                if (d < minD) {
+                    minD = d;
+                    bestDist = routePoints[i].cumDist;
+                }
+            }
+            if (minD < 1500) {
+                traveledMeters = Math.max(0, bestDist - 130);
+                const pose = sampleRouteAtDistance(traveledMeters);
+                currentLat = pose.lat;
+                currentLng = pose.lng;
+                currentHeading = pose.bearing;
+            } else {
+                engineMode = 'SIM_FREE';
+                updateModePillUI();
+            }
+
+            updateOrCreateVehicleMarker(currentLat, currentLng, currentHeading, 14);
+            if (map) map.setView([currentLat, currentLng], 16, { animate: true });
+            showToast(`📍 Đã chuyển tới điểm thực tế Nghệ An: ${roadTitle}`);
+        }
+
+        function scanSignsAroundCurrentPos() {
+            generateLocalSignsAroundRealUser(currentLat, currentLng, activeRoadName);
+            showToast(`🔄 Đã cập nhật ${roadSignsDatabase.length} biển báo & camera phạt nguội thực tế!`);
+            speakVietnameseAlert('Đã cập nhật dữ liệu biển báo giao thông và camera phạt nguội thực tế.');
+        }
+
+        // 5 Nút báo cáo cộng đồng dưới đáy màn hình
+        function reportCommunitySign(kind) {
+            const configs = {
+                camera: {
+                    signCode: 'camera_ai', speedLimit: 40,
+                    title: 'Camera Phạt Nguội Cộng Đồng Báo',
+                    secondaryCode: 'camera_ai', secondaryLabel: 'Cam Phạt Nguội 40',
+                    hasRangeCircle: true
+                },
+                speed: {
+                    signCode: 'speed40', speedLimit: 40,
+                    title: 'Điểm Bắn Tốc Độ 40 km/h Cộng Đồng',
+                    secondaryCode: 'speed40', secondaryLabel: 'Bắn tốc độ 40',
+                    hasRangeCircle: true
+                },
+                toll: {
+                    signCode: 'toll_etc', speedLimit: 30,
+                    title: 'Trạm Thu Phí VETC / ePass (30 km/h)',
+                    secondaryCode: 'toll_etc', secondaryLabel: 'Trạm ETC 30km/h',
+                    hasRangeCircle: true
+                },
+                jam: {
+                    signCode: 'jam_warning', speedLimit: 30,
+                    title: 'Cảnh Báo Ùn Tắc Giao Thông Phía Trước',
+                    secondaryCode: 'no_overtake', secondaryLabel: 'Kẹt xe • Tối đa 30',
+                    hasRangeCircle: false
+                }
+            };
+
+            const cfg = configs[kind] || configs.camera;
+            insertSignAheadOfVehicle(cfg);
+        }
+
+        function placeSpecificSignAhead(code) {
+            closeProhibitSignPicker();
+            const dictionary = {
+                speed40: { signCode: 'speed40', speedLimit: 40, title: 'Biển hạn chế tốc độ 40 km/h (P.127)', secondaryCode: 'speed40', secondaryLabel: 'Giới hạn 40 km/h', hasRangeCircle: true },
+                speed50: { signCode: 'speed50', speedLimit: 50, title: 'Biển hạn chế tốc độ 50 km/h (P.127)', secondaryCode: 'speed50', secondaryLabel: 'Giới hạn 50 km/h', hasRangeCircle: true },
+                speed60: { signCode: 'speed60', speedLimit: 60, title: 'Biển hạn chế tốc độ 60 km/h (P.127)', secondaryCode: 'speed60', secondaryLabel: 'Giới hạn 60 km/h', hasRangeCircle: true },
+                speed80: { signCode: 'speed80', speedLimit: 80, title: 'Biển hạn chế tốc độ 80 km/h (P.127)', secondaryCode: 'speed80', secondaryLabel: 'Giới hạn 80 km/h', hasRangeCircle: true },
+                no_overtake: { signCode: 'no_overtake', speedLimit: 50, title: 'Biển cấm vượt (P.125)', secondaryCode: 'no_overtake', secondaryLabel: 'Cấm vượt (P.125)', hasRangeCircle: false },
+                no_left_turn: { signCode: 'no_left_turn', speedLimit: 50, title: 'Biển cấm rẽ trái (P.123a)', secondaryCode: 'no_left_turn', secondaryLabel: 'Cấm rẽ trái', hasRangeCircle: false },
+                no_uturn: { signCode: 'no_uturn', speedLimit: 50, title: 'Biển cấm quay đầu xe (P.124a)', secondaryCode: 'no_uturn', secondaryLabel: 'Cấm quay đầu', hasRangeCircle: false },
+                no_parking: { signCode: 'no_parking', speedLimit: 50, title: 'Biển cấm dừng và đỗ xe (P.130)', secondaryCode: 'no_parking', secondaryLabel: 'Cấm dừng đỗ', hasRangeCircle: false },
+                no_entry: { signCode: 'no_entry', speedLimit: 50, title: 'Biển cấm đi ngược chiều (P.102)', secondaryCode: 'no_entry', secondaryLabel: 'Cấm ngược chiều', hasRangeCircle: false },
+                residential: { signCode: 'residential', speedLimit: 50, title: 'Biển bắt đầu Khu đông dân cư (R.420)', secondaryCode: 'residential', secondaryLabel: 'Khu dân cư 50km/h', hasRangeCircle: false }
+            };
+            const cfg = dictionary[code] || dictionary.no_overtake;
+            insertSignAheadOfVehicle(cfg);
+        }
+
+        function insertSignAheadOfVehicle(cfg) {
+            const aheadDist = (traveledMeters + 95) % totalRouteMeters;
+            const pos = engineMode === 'SIM_ROUTE'
+                ? sampleRouteAtDistance(aheadDist)
+                : offsetCoordByBearing(currentLat, currentLng, currentHeading, 95);
+
+            const newSign = {
+                id: 'community_' + Date.now(),
+                lat: pos.lat,
+                lng: pos.lng,
+                routeDist: aheadDist,
+                signCode: cfg.signCode,
+                speedLimit: cfg.speedLimit,
+                title: cfg.title,
+                road: 'Vừa ghim cách đầu xe 95m',
+                secondaryCode: cfg.secondaryCode,
+                secondaryLabel: cfg.secondaryLabel,
+                hasRangeCircle: cfg.hasRangeCircle
+            };
+
+            roadSignsDatabase.unshift(newSign);
+            renderAllSignsOnMap();
+            triggerHaptic('success');
+            showToast(`✅ Đã ghim "${newSign.title}" cách đầu xe 95m!`);
+            speakVietnameseAlert(`Đã báo cáo ${newSign.title} phía trước.`);
+        }
+
+        // Dịch chuyển xe tới trước biển báo 115m để chạy thử qua biển
+        function driveThroughSign(signId) {
+            closeSignsDirectoryModal();
+            const sign = roadSignsDatabase.find(s => s.id === signId);
+            if (!sign) return;
+
+            if (typeof sign.routeDist === 'number') {
+                traveledMeters = (sign.routeDist - 115 + totalRouteMeters) % totalRouteMeters;
+                const pose = sampleRouteAtDistance(traveledMeters);
+                currentLat = pose.lat;
+                currentLng = pose.lng;
+                currentHeading = pose.bearing;
+            } else {
+                currentLat = sign.lat - 0.0007;
+                currentLng = sign.lng - 0.0007;
+            }
+
+            engineMode = 'SIM_ROUTE';
+            if (currentSpeed < 40) {
+                currentSpeed = 48;
+                const slider = document.getElementById('throttle-slider');
+                if (slider) slider.value = 48;
+            }
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            updateModePillUI();
+            updateOrCreateVehicleMarker(currentLat, currentLng, currentHeading, 12);
+            if (map) map.setView([currentLat, currentLng], 17, { animate: true });
+            showToast(`🚗 Đang lái xe qua "${sign.title}" (Cách 115m)!`);
+        }
+
+        function jumpNearUpcomingSign() {
+            if (!roadSignsDatabase.length) return;
+            const sorted = [...roadSignsDatabase].sort((a, b) => {
+                const da = haversineMeters(currentLat, currentLng, a.lat, a.lng);
+                const db = haversineMeters(currentLat, currentLng, b.lat, b.lng);
+                return da - db;
+            });
+            if (sorted[0]) driveThroughSign(sorted[0].id);
+        }
+
+        // =========================================================================
+        // 9. WEB AUDIO API (DUAL-TONE ALARM) & WEB SPEECH API (TIẾNG VIỆT 'vi-VN')
+        // =========================================================================
+        function playProximityChime() {
+            if (!audioSystemEnabled) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                osc.frequency.setValueAtTime(1174.6, ctx.currentTime + 0.11);
+                gain.gain.setValueAtTime(0.14, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.3);
+            } catch (e) {}
+        }
+
+        function playDualToneOverspeedAlarm() {
+            if (!audioSystemEnabled) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioCtx();
+                [0, 0.14, 0.28].forEach((offset, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(idx % 2 === 0 ? 1046.5 : 1396.9, ctx.currentTime + offset);
+                    gain.gain.setValueAtTime(0.22, ctx.currentTime + offset);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.12);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(ctx.currentTime + offset);
+                    osc.stop(ctx.currentTime + offset + 0.13);
+                });
+            } catch (e) {}
+        }
+
+        function speakVietnameseAlert(message) {
+            if (!audioSystemEnabled || !('speechSynthesis' in window)) return;
+            try {
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(message);
+                utter.lang = 'vi-VN';
+                utter.rate = 1.05;
+                window.speechSynthesis.speak(utter);
+            } catch (e) {}
+        }
+
+        function toggleAudioSystem() {
+            audioSystemEnabled = !audioSystemEnabled;
+            const txt = document.getElementById('pill-audio-text');
+            const btn = document.getElementById('pill-audio-btn');
+            if (audioSystemEnabled) {
+                if (txt) txt.textContent = '🔊 Âm thanh: Bật';
+                if (btn) btn.classList.replace('text-slate-400', 'text-emerald-300');
+                showToast('🔊 Đã bật giọng nói tiếng Việt & còi cảnh báo tốc độ.');
+            } else {
+                if (txt) txt.textContent = '🔇 Âm thanh: Tắt';
+                if (btn) btn.classList.replace('text-emerald-300', 'text-slate-400');
+                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                showToast('🔇 Đã tắt âm thanh cảnh báo.');
+            }
+        }
+
+        function announceCurrentLimit() {
+            playProximityChime();
+            speakVietnameseAlert(`Tốc độ tối đa cho phép trên đoạn đường này là ${activeRoadLimit} ki lô mét trên giờ. ${activeSecondaryLabel}.`);
+            showToast(`🔊 Giới hạn hiện tại: ${activeRoadLimit} km/h (${activeSecondaryLabel})`);
+        }
+
+        function previewSignVoice(signId) {
+            const sign = roadSignsDatabase.find(s => s.id === signId);
+            if (!sign) return;
+            playProximityChime();
+            speakVietnameseAlert(`Chú ý, phía trước có ${sign.title}, tốc độ tối đa ${sign.speedLimit} ki lô mét trên giờ.`);
+            showToast(`🔊 Đang đọc: ${sign.title}`);
+        }
+
+        // =========================================================================
+        // 10. QUẢN LÝ MODALS & HÀM TOÁN HỌC ĐỊA LÝ
+        // =========================================================================
+        function openSignsDirectoryModal() {
+            const container = document.getElementById('signs-directory-list');
+            const list = roadSignsDatabase.map(s => ({
+                ...s,
+                dist: Math.round(haversineMeters(currentLat, currentLng, s.lat, s.lng))
+            })).sort((a, b) => a.dist - b.dist);
+
+            container.innerHTML = list.map(s => `
+                <div class="p-3 rounded-2xl bg-slate-800/90 border border-slate-700/80 flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="shrink-0">${buildQCVNSignSVG(s, 40)}</div>
+                        <div class="min-w-0">
+                            <p class="text-xs font-black text-white truncate">${s.title}</p>
+                            <p class="text-[10px] font-semibold text-slate-400 truncate mt-0.5">${s.road} • Cách ${s.dist}m</p>
+                        </div>
+                    </div>
+                    <button onclick="driveThroughSign('${s.id}')" class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] shrink-0 active:scale-95">
+                        Chạy thử qua biển
+                    </button>
+                </div>
+            `).join('');
+
+            const modal = document.getElementById('signs-directory-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSignsDirectoryModal() {
+            const modal = document.getElementById('signs-directory-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function openProhibitSignPicker() {
+            const modal = document.getElementById('prohibit-picker-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeProhibitSignPicker() {
+            const modal = document.getElementById('prohibit-picker-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function openCityQuickPicker() {
+            const modal = document.getElementById('city-picker-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeCityQuickPicker() {
+            const modal = document.getElementById('city-picker-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function relocateToCity(lat, lng, roadTitle) {
+            closeCityQuickPicker();
+            currentLat = lat;
+            currentLng = lng;
+            engineMode = 'SIM_ROUTE';
+            if (currentSpeed < 40) currentSpeed = 48;
+            autoFollowVehicle = true;
+            updateFollowButtonStyle();
+            updateModePillUI();
+            generateCityLoopRouteAndSigns(lat, lng, roadTitle);
+            updateOrCreateVehicleMarker(lat, lng, currentHeading, 14);
+            if (map) map.setView([lat, lng], 16, { animate: true });
+            showToast(`📍 Đã chuyển lộ trình tới ${roadTitle}!`);
+        }
+
+        function populateModalSignIcons() {
+            const mapIds = {
+                'modal-icon-speed40': ['speed40', 36, 40],
+                'modal-icon-speed50': ['speed50', 36, 50],
+                'modal-icon-speed60': ['speed60', 36, 60],
+                'modal-icon-speed80': ['speed80', 36, 80],
+                'modal-icon-no-overtake': ['no_overtake', 36, 50],
+                'modal-icon-no-left': ['no_left_turn', 36, 50],
+                'modal-icon-no-uturn': ['no_uturn', 36, 50],
+                'modal-icon-no-parking': ['no_parking', 36, 50],
+                'modal-icon-no-entry': ['no_entry', 36, 50],
+                'modal-icon-residential': ['residential', 36, 50]
+            };
+            Object.keys(mapIds).forEach(id => {
+                const el = document.getElementById(id);
+                const [code, sz, spd] = mapIds[id];
+                if (el) el.innerHTML = buildQCVNSignSVG(code, sz, spd);
+            });
+        }
+
+        function showToast(msg) {
+            const box = document.getElementById('app-toast');
+            const txt = document.getElementById('app-toast-text');
+            if (!box || !txt) return;
+            txt.textContent = msg;
+            box.classList.remove('opacity-0');
+            box.classList.add('opacity-100');
+            clearTimeout(window.__vietmapToastTimer);
+            window.__vietmapToastTimer = setTimeout(() => {
+                box.classList.remove('opacity-100');
+                box.classList.add('opacity-0');
+            }, 3200);
+        }
+
+        function haversineMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+        }
+
+        function computeBearing(lat1, lng1, lat2, lng2) {
+            const p1 = lat1 * Math.PI / 180;
+            const p2 = lat2 * Math.PI / 180;
+            const dLon = (lng2 - lng1) * Math.PI / 180;
+            const y = Math.sin(dLon) * Math.cos(p2);
+            const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dLon);
+            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+
+        function offsetCoordByBearing(lat, lng, bearingDeg, distMeters) {
+            const R = 6378137;
+            const brng = bearingDeg * Math.PI / 180;
+            const lat1 = lat * Math.PI / 180;
+            const lon1 = lng * Math.PI / 180;
+            const lat2 = Math.asin(
+                Math.sin(lat1) * Math.cos(distMeters / R) +
+                Math.cos(lat1) * Math.sin(distMeters / R) * Math.cos(brng)
+            );
+            const lon2 = lon1 + Math.atan2(
+                Math.sin(brng) * Math.sin(distMeters / R) * Math.cos(lat1),
+                Math.cos(distMeters / R) - Math.sin(lat1) * Math.sin(lat2)
+            );
+            return {
+                lat: lat2 * 180 / Math.PI,
+                lng: lon2 * 180 / Math.PI
+            };
+        }
+
+        window.addEventListener('DOMContentLoaded', initializeApplication);
+    </script>
+</body>
+</html>
