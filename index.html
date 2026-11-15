@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Vietmap Pro Live - Supabase Realtime Cloud</title>
+    <title>Vietmap Pro Live - Cloud Auth & Realtime Sync</title>
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-webapp.js"></script>
     <!-- Tailwind CSS -->
@@ -34,7 +34,6 @@
         }
         #map { width: 100%; height: 100%; background: #0f172a; }
 
-        /* Giữ biển báo luôn đứng thẳng khi bản đồ xoay theo hướng xe */
         .qcvn-marker-wrap {
             transform: rotate(var(--marker-rotation));
             transition: transform 0.35s linear;
@@ -43,7 +42,6 @@
         }
         .qcvn-pole { width: 3px; height: 8px; background: #cbd5e1; border-radius: 1px; }
 
-        /* Biển tròn giới hạn tốc độ chuẩn QCVN P.127 */
         .speed-sign-circle {
             width: 38px; height: 38px; border-radius: 50%;
             background: #ffffff; border: 4.5px solid #dc2626;
@@ -97,7 +95,34 @@
     <div id="realtime-toast" class="fixed top-3 left-1/2 -translate-x-1/2 z-[4000] hidden pointer-events-none">
         <div class="bg-emerald-950/95 border border-emerald-400 text-emerald-200 px-3.5 py-2 rounded-2xl shadow-2xl flex items-center gap-2 text-xs font-extrabold">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            <span id="realtime-toast-text">☁️ Đã đồng bộ dữ liệu thời gian thực từ Admin!</span>
+            <span id="realtime-toast-text">☁️ Đã đồng bộ dữ liệu thời gian thực từ Cloud!</span>
+        </div>
+    </div>
+
+    <!-- MODAL QUẢN LÝ TÀI KHOẢN NGƯỜI DÙNG TRÊN SUPABASE (CHỈ ADMIN) -->
+    <div id="admin-users-modal" class="fixed inset-0 z-[3700] bg-slate-950/90 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-amber-500/60 rounded-3xl max-w-md w-full max-h-[82vh] flex flex-col p-4 shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div class="flex items-center gap-2">
+                    <span class="text-xl">👥</span>
+                    <div>
+                        <h3 class="text-sm font-extrabold text-amber-300">Quản Lý Tài Khoản (Supabase Cloud)</h3>
+                        <p class="text-[10px] text-slate-400" id="users-count-label">Đang tải danh sách tài khoản...</p>
+                    </div>
+                </div>
+                <button onclick="closeAdminUsersModal()" class="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-bold">✕</button>
+            </div>
+
+            <div id="admin-users-list" class="py-3 overflow-y-auto space-y-2 flex-1"></div>
+
+            <div class="pt-2 border-t border-slate-800 flex gap-2">
+                <button onclick="fetchAllCloudUsers()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-xl text-xs">
+                    🔄 Làm Mới Danh Sách
+                </button>
+                <button onclick="closeAdminUsersModal()" class="bg-slate-800 text-slate-300 font-bold py-2 px-4 rounded-xl text-xs">
+                    Đóng
+                </button>
+            </div>
         </div>
     </div>
 
@@ -109,7 +134,7 @@
                     <span class="text-2xl">☁️</span>
                     <div>
                         <h3 class="text-sm font-extrabold text-emerald-300">Kết Nối Supabase Realtime</h3>
-                        <p class="text-[10px] text-slate-400">Đồng bộ vị trí Cam & Biển cho mọi máy</p>
+                        <p class="text-[10px] text-slate-400">Đồng bộ Tài khoản & Biển báo cho mọi máy</p>
                     </div>
                 </div>
                 <button onclick="closeSupabaseConfigModal()" class="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-bold">✕</button>
@@ -141,21 +166,21 @@
         </div>
     </div>
 
-    <!-- MODAL ĐĂNG NHẬP & ĐĂNG KÝ TÀI KHOẢN (PHÂN QUYỀN ADMIN VS USER) -->
+    <!-- MODAL ĐĂNG NHẬP & ĐĂNG KÝ TÀI KHOẢN (ĐỒNG BỘ TRÊN SUPABASE CLOUD) -->
     <div id="auth-modal" class="fixed inset-0 z-[3500] bg-slate-950/90 backdrop-blur-md hidden items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl">
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-2">
                     <span class="text-2xl">🔐</span>
                     <div>
-                        <h3 class="text-sm font-extrabold text-white">Tài Khoản & Phân Quyền</h3>
-                        <p class="text-[10px] text-slate-400">Admin: Chỉnh sửa App • User: Chỉ tìm lộ trình</p>
+                        <h3 class="text-sm font-extrabold text-white">Tài Khoản Đám Mây (Cloud Auth)</h3>
+                        <p class="text-[10px] text-slate-400">Đồng bộ đăng nhập trên mọi thiết bị</p>
                     </div>
                 </div>
                 <button onclick="closeAuthModal()" class="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-bold">✕</button>
             </div>
 
-            <div class="flex bg-slate-800 p-1 rounded-2xl mb-3">
+            <div id="auth-tabs-bar" class="flex bg-slate-800 p-1 rounded-2xl mb-3">
                 <button id="auth-tab-login" onclick="switchAuthTab('login')" class="flex-1 py-1.5 rounded-xl text-xs font-extrabold bg-blue-600 text-white">Đăng Nhập</button>
                 <button id="auth-tab-register" onclick="switchAuthTab('register')" class="flex-1 py-1.5 rounded-xl text-xs font-extrabold text-slate-300">Tạo Tài Khoản (User)</button>
             </div>
@@ -167,10 +192,10 @@
                 </div>
                 <div>
                     <label class="text-[10px] font-bold text-slate-400 uppercase">Mật khẩu</label>
-                    <input id="auth-password" type="password" placeholder="Nhập mật khẩu..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
+                    <input id="auth-password" type="password" placeholder="Nhập mật khẩu..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') handleAuthSubmit()">
                 </div>
                 <div id="auth-register-note" class="hidden bg-slate-800/80 border border-slate-700 rounded-xl p-2.5 text-[11px] text-amber-300">
-                    ℹ️ Tài khoản tạo mới là <b>Tài khoản Người Dùng</b>: Chỉ được tìm kiếm lộ trình và nhận cảnh báo, <b>không được phép chỉnh sửa biển báo/camera của ứng dụng</b>.
+                    ℹ️ Tài khoản tạo mới được lưu trên <b>Supabase Cloud</b> với quyền <b>Người Dùng</b>: Chỉ được tìm kiếm lộ trình và nhận cảnh báo, <b>không được phép chỉnh sửa dữ liệu ứng dụng</b>.
                 </div>
                 <div id="auth-error-msg" class="hidden text-[11px] font-bold text-rose-400 text-center"></div>
                 <button id="auth-submit-btn" onclick="handleAuthSubmit()" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-lg">
@@ -183,11 +208,19 @@
                     <div>Tài khoản: <b id="profile-name" class="text-white">--</b></div>
                     <div>Cấp quyền: <span id="profile-role-badge" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">--</span></div>
                 </div>
+
+                <!-- Khu vực Quản trị tài khoản & Đổi mật khẩu Admin trên Supabase -->
                 <div id="admin-change-pass-box" class="hidden bg-slate-800/60 border border-amber-500/40 rounded-2xl p-3 space-y-2">
-                    <div class="text-[11px] font-extrabold text-amber-300">👑 Đổi mật khẩu Admin của bạn</div>
+                    <div class="text-[11px] font-extrabold text-amber-300">👑 Đổi mật khẩu Admin (Đồng bộ mọi máy)</div>
                     <input id="new-admin-pass" type="password" placeholder="Nhập mật khẩu Admin mới..." class="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs text-white">
-                    <button onclick="changeAdminPassword()" class="w-full bg-amber-500 text-slate-950 font-extrabold py-1.5 rounded-xl text-xs">Lưu Mật Khẩu Admin Mới</button>
+                    <button onclick="changeAdminPassword()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-2 rounded-xl text-xs">
+                        ☁️ Lưu Mật Khẩu Admin Lên Cloud
+                    </button>
+                    <button onclick="openAdminUsersModal()" class="w-full bg-blue-600/30 hover:bg-blue-600/40 border border-blue-400/60 text-blue-200 font-extrabold py-2 rounded-xl text-xs">
+                        👥 Quản Lý Danh Sách Tài Khoản User
+                    </button>
                 </div>
+
                 <button onclick="logoutAccount()" class="w-full bg-rose-600/90 hover:bg-rose-500 text-white font-bold py-2.5 rounded-xl text-xs">
                     Đăng Xuất Tài Khoản
                 </button>
@@ -334,7 +367,7 @@
             <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-3xl">📡</div>
             <h2 class="text-lg font-extrabold text-white mb-1">Kết Nối Định Vị GPS Thực Tế</h2>
             <p class="text-xs text-slate-300 leading-relaxed mb-4">
-                Tích hợp <b>Biển giới hạn tốc độ QCVN 41:2019</b>, <b>Camera phạt nguội chuẩn vị trí</b> và đồng bộ đám mây <b>Supabase Realtime</b> cho mọi người dùng.
+                Tích hợp <b>Biển giới hạn tốc độ QCVN 41:2019</b>, <b>Camera phạt nguội chuẩn vị trí</b> và đồng bộ tài khoản đám mây <b>Supabase Realtime</b>.
             </p>
             <button onclick="requestDeviceGPSPermission()" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-3 px-4 rounded-2xl text-sm mb-2 shadow-lg">
                 📍 Bật GPS & Vào Bản Đồ Ngay
@@ -492,7 +525,10 @@
             <button onclick="adminAddPointAtCar('camera')" class="flex-1 bg-slate-800 hover:bg-slate-700 py-2 px-1 rounded-xl text-[11px] font-bold text-amber-300 border border-slate-700">
                 📷 +Phạt Nguội
             </button>
-            <button onclick="openSupabaseConfigModal()" class="bg-emerald-600/30 hover:bg-emerald-600/40 py-2 px-2.5 rounded-xl text-[11px] font-extrabold text-emerald-300 border border-emerald-500/60">
+            <button onclick="openAdminUsersModal()" class="bg-blue-600/30 hover:bg-blue-600/40 py-2 px-2 rounded-xl text-[11px] font-extrabold text-blue-200 border border-blue-500/60" title="Quản lý tài khoản User">
+                👥 User
+            </button>
+            <button onclick="openSupabaseConfigModal()" class="bg-emerald-600/30 hover:bg-emerald-600/40 py-2 px-2 rounded-xl text-[11px] font-extrabold text-emerald-300 border border-emerald-500/60" title="Cấu hình Supabase Cloud">
                 ☁️ Cloud
             </button>
         </div>
@@ -502,9 +538,9 @@
 
     <script>
         // =========================================================================
-        // 0. CẤU HÌNH SUPABASE REALTIME CLOUD (ĐỒNG BỘ MỌI MÁY NGƯỜI DÙNG)
+        // 0. CẤU HÌNH SUPABASE REALTIME CLOUD (ĐỒNG BỘ BẢN ĐỒ & TÀI KHOẢN MỌI MÁY)
         // =========================================================================
-        // Điền trực tiếp Project URL và Anon Key của bạn vào 2 dòng dưới đây để mọi máy tự động kết nối:
+        // Dán Project URL và Anon Key của bạn vào 2 dòng dưới đây để mọi thiết bị tự động kết nối:
         const DEFAULT_SUPABASE_URL = ''; 
         const DEFAULT_SUPABASE_KEY = '';
 
@@ -513,6 +549,9 @@
         let supabaseClient = null;
         let realtimeChannel = null;
         let isSupabaseConnected = false;
+
+        // Danh sách tài khoản đồng bộ từ bảng app_users trên Supabase
+        let cloudUsersCache = [];
 
         function showRealtimeToast(message) {
             const toast = document.getElementById('realtime-toast');
@@ -526,7 +565,6 @@
             }, 3500);
         }
 
-        // Chuyển đổi định dạng dòng dữ liệu giữa Supabase (snake_case) và App (camelCase)
         function mapRowFromSupabase(row) {
             return {
                 id: String(row.id),
@@ -573,45 +611,49 @@
             try {
                 supabaseClient = window.supabase.createClient(supabaseUrl.trim(), supabaseKey.trim());
 
-                // 1. Tải toàn bộ danh sách điểm từ bảng traffic_points trên Supabase
-                const { data, error } = await supabaseClient
+                // 1. Tải danh sách Biển tốc độ & Camera từ bảng traffic_points
+                const { data: pointsData, error: pointsErr } = await supabaseClient
                     .from('traffic_points')
                     .select('*');
 
-                if (error) throw error;
+                if (pointsErr) throw pointsErr;
 
                 isSupabaseConnected = true;
                 if (cloudBadge) {
-                    cloudBadge.textContent = '☁️ Cloud: Đang Đồng Bộ Live';
+                    cloudBadge.textContent = '☁️ Cloud: Đồng Bộ Live';
                     cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-emerald-600/30 border border-emerald-400 text-emerald-200 text-[11px] font-extrabold';
                 }
                 if (statusBox) {
-                    statusBox.innerHTML = `<span class="text-emerald-400 font-bold">✅ Đã kết nối Supabase Realtime thành công!</span> (Hiện có ${data ? data.length : 0} điểm trên Cloud).`;
+                    statusBox.innerHTML = `<span class="text-emerald-400 font-bold">✅ Đã kết nối Supabase Realtime (Bản đồ + Tài khoản)!</span> (Hiện có ${pointsData ? pointsData.length : 0} biển/cam trên Cloud).`;
                 }
 
-                // Nếu trên Cloud đã có dữ liệu -> Cập nhật ngay cho máy người dùng
-                if (data && data.length > 0) {
-                    trafficDatabase = data.map(mapRowFromSupabase);
+                if (pointsData && pointsData.length > 0) {
+                    trafficDatabase = pointsData.map(mapRowFromSupabase);
                     saveTrafficDatabaseLocal();
                     renderAllTrafficMarkers();
                     evaluateTrafficAlertsAndNavigation();
                 } else if (isAdminUser()) {
-                    // Nếu bảng trên Cloud mới tạo còn trống và người mở là Admin -> Tự động đẩy 53 điểm gốc lên Cloud
                     await pushAllLocalPointsToSupabase(true);
                 }
 
-                // 2. Đăng ký kênh WebSocket Realtime để lắng nghe mọi thao tác Thêm / Sửa / Kéo thả / Xóa từ Admin
+                // 2. Đồng bộ bảng Tài khoản app_users (Khởi tạo tài khoản Admin nếu bảng mới tạo)
+                await syncAdminSeedAndFetchUsers();
+
+                // 3. Lắng nghe kênh WebSocket Realtime cho cả 2 bảng: traffic_points & app_users
                 if (realtimeChannel) {
                     supabaseClient.removeChannel(realtimeChannel);
                 }
                 realtimeChannel = supabaseClient
-                    .channel('public:traffic_points_live')
+                    .channel('public:vietmap_cloud_sync')
                     .on(
                         'postgres_changes',
                         { event: '*', schema: 'public', table: 'traffic_points' },
-                        (payload) => {
-                            handleIncomingRealtimeChange(payload);
-                        }
+                        (payload) => handleIncomingRealtimePointChange(payload)
+                    )
+                    .on(
+                        'postgres_changes',
+                        { event: '*', schema: 'public', table: 'app_users' },
+                        (payload) => handleIncomingRealtimeUserChange(payload)
                     )
                     .subscribe();
 
@@ -622,35 +664,104 @@
                     cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-rose-600/30 border border-rose-400 text-rose-200 text-[11px] font-bold';
                 }
                 if (statusBox) {
-                    statusBox.innerHTML = `<span class="text-rose-400 font-bold">❌ Lỗi:</span> ${err.message || 'Kiểm tra lại URL/Key hoặc chạy lệnh SQL tạo bảng traffic_points.'}`;
+                    statusBox.innerHTML = `<span class="text-rose-400 font-bold">❌ Lỗi:</span> ${err.message || 'Kiểm tra lại URL/Key hoặc chạy lệnh SQL tạo bảng traffic_points và app_users.'}`;
                 }
             }
         }
 
-        // Xử lý sự kiện Realtime gửi về tất cả các máy đang mở App
-        function handleIncomingRealtimeChange(payload) {
-            const { eventType, new: newRow, old: oldRow } = payload;
+        // Khởi tạo tài khoản Admin mặc định trên bảng app_users và tải danh sách tài khoản
+        async function syncAdminSeedAndFetchUsers() {
+            if (!supabaseClient) return;
+            try {
+                const { data: users, error } = await supabaseClient
+                    .from('app_users')
+                    .select('*')
+                    .order('created_at', { ascending: false });
 
+                if (error) return;
+
+                if (!users || users.length === 0) {
+                    const seedAdmins = [
+                        { username: 'admin', password: adminSavedPassword, role: 'ADMIN', is_locked: false },
+                        { username: '0354674561', password: adminSavedPassword, role: 'ADMIN', is_locked: false }
+                    ];
+                    await supabaseClient.from('app_users').upsert(seedAdmins, { onConflict: 'username' });
+                    cloudUsersCache = seedAdmins;
+                } else {
+                    cloudUsersCache = users;
+                    // Đồng bộ mật khẩu Admin từ Cloud về thiết bị
+                    const adminRow = users.find(u => u.role === 'ADMIN');
+                    if (adminRow && adminRow.password) {
+                        adminSavedPassword = adminRow.password;
+                        localStorage.setItem('vietmap_admin_secret_pw', adminSavedPassword);
+                    }
+                }
+
+                // Kiểm tra phiên đăng nhập hiện tại xem có bị Admin khóa hoặc xóa từ xa không
+                verifyCurrentSessionAgainstCloud();
+            } catch (e) {}
+        }
+
+        function verifyCurrentSessionAgainstCloud() {
+            if (!currentAuthSession.loggedIn || !cloudUsersCache.length) return;
+            const me = cloudUsersCache.find(u => u.username === currentAuthSession.username);
+            if (!me) {
+                logoutAccount(true);
+                alert('Tài khoản của bạn đã bị Quản trị viên xóa khỏi hệ thống!');
+                return;
+            }
+            if (me.is_locked) {
+                logoutAccount(true);
+                alert('Tài khoản của bạn đã bị Quản trị viên khóa!');
+                return;
+            }
+            if (me.role !== currentAuthSession.role) {
+                currentAuthSession.role = me.role;
+                localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
+                updatePermissionUI();
+            }
+        }
+
+        function handleIncomingRealtimePointChange(payload) {
+            const { eventType, new: newRow, old: oldRow } = payload;
             if (eventType === 'INSERT' || eventType === 'UPDATE') {
                 const updatedPoint = mapRowFromSupabase(newRow);
                 const existingIdx = trafficDatabase.findIndex(x => x.id === updatedPoint.id);
-                if (existingIdx !== -1) {
-                    trafficDatabase[existingIdx] = updatedPoint;
-                } else {
-                    trafficDatabase.push(updatedPoint);
-                }
+                if (existingIdx !== -1) trafficDatabase[existingIdx] = updatedPoint;
+                else trafficDatabase.push(updatedPoint);
                 showRealtimeToast(`☁️ Admin vừa cập nhật: ${updatedPoint.title}`);
             } else if (eventType === 'DELETE' && oldRow && oldRow.id) {
                 trafficDatabase = trafficDatabase.filter(x => x.id !== String(oldRow.id));
-                showRealtimeToast(`☁️ Admin vừa xóa 1 điểm cảnh báo trên bản đồ`);
+                showRealtimeToast('☁️ Admin vừa xóa 1 điểm cảnh báo trên bản đồ');
             }
-
             saveTrafficDatabaseLocal();
             renderAllTrafficMarkers();
             evaluateTrafficAlertsAndNavigation();
         }
 
-        // Hàm đẩy 1 điểm vừa Thêm / Sửa / Kéo thả lên Supabase Cloud
+        // Xử lý Realtime khi bảng app_users thay đổi (Đổi mật khẩu Admin, tạo User mới, Khóa/Xóa User)
+        function handleIncomingRealtimeUserChange(payload) {
+            const { eventType, new: newRow, old: oldRow } = payload;
+            if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                const idx = cloudUsersCache.findIndex(u => u.username === newRow.username);
+                if (idx !== -1) cloudUsersCache[idx] = newRow;
+                else cloudUsersCache.unshift(newRow);
+
+                if (newRow.role === 'ADMIN' && newRow.password) {
+                    adminSavedPassword = newRow.password;
+                    localStorage.setItem('vietmap_admin_secret_pw', adminSavedPassword);
+                }
+            } else if (eventType === 'DELETE' && oldRow && oldRow.username) {
+                cloudUsersCache = cloudUsersCache.filter(u => u.username !== oldRow.username);
+            }
+
+            verifyCurrentSessionAgainstCloud();
+            const usersModal = document.getElementById('admin-users-modal');
+            if (usersModal && !usersModal.classList.contains('hidden')) {
+                renderAdminUsersList();
+            }
+        }
+
         async function syncSinglePointToSupabase(point) {
             if (!isSupabaseConnected || !supabaseClient || !isAdminUser()) return;
             try {
@@ -665,7 +776,6 @@
             }
         }
 
-        // Hàm xóa 1 điểm trên Supabase Cloud
         async function deleteSinglePointFromSupabase(pointId) {
             if (!isSupabaseConnected || !supabaseClient || !isAdminUser()) return;
             try {
@@ -678,7 +788,6 @@
             } catch (e) {}
         }
 
-        // Hàm đẩy toàn bộ danh sách điểm hiện tại lên Supabase Cloud (1 chạm)
         async function pushAllLocalPointsToSupabase(silent = false) {
             if (!isAdminUser()) {
                 alert('Chỉ Admin mới có quyền đẩy dữ liệu lên Supabase Cloud!');
@@ -696,10 +805,10 @@
                 if (error) throw error;
                 if (!silent) {
                     showRealtimeToast(`☁️ Đã đẩy thành công ${rows.length} điểm lên Supabase Cloud!`);
-                    alert(`Đã đồng bộ toàn bộ ${rows.length} Biển tốc độ & Camera phạt nguội lên Supabase Cloud cho mọi người dùng!`);
+                    alert(`Đã đồng bộ toàn bộ ${rows.length} Biển tốc độ & Camera phạt nguội lên Supabase Cloud!`);
                 }
             } catch (e) {
-                if (!silent) alert('Lỗi khi đẩy dữ liệu: ' + (e.message || 'Hãy chắc chắn bạn đã chạy lệnh SQL tạo bảng traffic_points'));
+                if (!silent) alert('Lỗi khi đẩy dữ liệu: ' + (e.message || 'Hãy chắc chắn bạn đã chạy lệnh SQL tạo bảng'));
             }
         }
 
@@ -708,8 +817,8 @@
                 openSupabaseConfigModal();
             } else {
                 showRealtimeToast(isSupabaseConnected
-                    ? '☁️ Máy của bạn đang nhận dữ liệu thời gian thực từ Admin!'
-                    : 'ℹ️ Chế độ Người Dùng: Tự động nhận lộ trình & cảnh báo.');
+                    ? '☁️ Tài khoản & Bản đồ đang đồng bộ Realtime với máy chủ!'
+                    : 'ℹ️ Chế độ Người Dùng: Chỉ được phép tìm kiếm lộ trình.');
             }
         }
 
@@ -747,7 +856,7 @@
         }
 
         // =========================================================================
-        // 1. HỆ THỐNG ĐĂNG NHẬP & PHÂN QUYỀN (CHỈ ADMIN ĐƯỢC CHỈNH SỬA APP)
+        // 1. ĐĂNG NHẬP, ĐĂNG KÝ & QUẢN LÝ USER ĐỒNG BỘ SUPABASE (app_users)
         // =========================================================================
         const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
         if (tg) { tg.expand(); if (tg.setHeaderColor) tg.setHeaderColor('#090d16'); }
@@ -812,18 +921,20 @@
 
         function openAuthModal() {
             const modal = document.getElementById('auth-modal');
+            const tabsBar = document.getElementById('auth-tabs-bar');
             const formBox = document.getElementById('auth-form-box');
             const loggedBox = document.getElementById('auth-logged-box');
             document.getElementById('auth-error-msg').classList.add('hidden');
 
             if (currentAuthSession.loggedIn) {
+                tabsBar.classList.add('hidden');
                 formBox.classList.add('hidden');
                 loggedBox.classList.remove('hidden');
                 document.getElementById('profile-name').textContent = currentAuthSession.username;
                 const badge = document.getElementById('profile-role-badge');
                 const adminPassBox = document.getElementById('admin-change-pass-box');
                 if (isAdminUser()) {
-                    badge.textContent = '👑 QUẢN TRỊ VIÊN (TOÀN QUYỀN CHỈNH SỬA & ĐỒNG BỘ CLOUD)';
+                    badge.textContent = '👑 QUẢN TRỊ VIÊN (TOÀN QUYỀN CHỈNH SỬA & QUẢN LÝ USER)';
                     badge.className = 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px]';
                     adminPassBox.classList.remove('hidden');
                 } else {
@@ -832,6 +943,7 @@
                     adminPassBox.classList.add('hidden');
                 }
             } else {
+                tabsBar.classList.remove('hidden');
                 formBox.classList.remove('hidden');
                 loggedBox.classList.add('hidden');
                 switchAuthTab('login');
@@ -863,14 +975,16 @@
                 regBtn.className = 'flex-1 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-600 text-white';
                 loginBtn.className = 'flex-1 py-1.5 rounded-xl text-xs font-extrabold text-slate-300';
                 regNote.classList.remove('hidden');
-                submitBtn.textContent = 'Tạo Tài Khoản Người Dùng (Chỉ tìm lộ trình)';
+                submitBtn.textContent = 'Tạo Tài Khoản Người Dùng (Lưu Cloud)';
             }
         }
 
-        function handleAuthSubmit() {
+        // Đăng nhập & Đăng ký đồng bộ trực tiếp với bảng app_users trên Supabase
+        async function handleAuthSubmit() {
             const userInp = document.getElementById('auth-username').value.trim().toLowerCase();
             const passInp = document.getElementById('auth-password').value.trim();
             const errEl = document.getElementById('auth-error-msg');
+            const submitBtn = document.getElementById('auth-submit-btn');
 
             if (!userInp || !passInp) {
                 errEl.textContent = 'Vui lòng nhập đầy đủ tài khoản và mật khẩu!';
@@ -878,58 +992,139 @@
                 return;
             }
 
+            submitBtn.textContent = '⏳ Đang xác thực Cloud...';
+
+            // TRƯỜNG HỢP 1: TẠO TÀI KHOẢN NGƯỜI DÙNG MỚI (USER)
             if (authModalTab === 'register') {
                 if (ADMIN_VALID_USERNAMES.includes(userInp)) {
                     errEl.textContent = 'Tên tài khoản này thuộc quyền Quản trị viên, không thể đăng ký!';
                     errEl.classList.remove('hidden');
+                    submitBtn.textContent = 'Tạo Tài Khoản Người Dùng (Lưu Cloud)';
                     return;
                 }
-                const existing = registeredUsers.find(u => u.username === userInp);
-                if (existing) {
-                    errEl.textContent = 'Tài khoản này đã tồn tại, vui lòng chuyển sang Đăng nhập!';
-                    errEl.classList.remove('hidden');
-                    return;
+
+                if (isSupabaseConnected && supabaseClient) {
+                    try {
+                        const { data: existRow } = await supabaseClient
+                            .from('app_users')
+                            .select('username')
+                            .eq('username', userInp)
+                            .maybeSingle();
+
+                        if (existRow) {
+                            errEl.textContent = 'Tài khoản này đã tồn tại trên hệ thống Cloud!';
+                            errEl.classList.remove('hidden');
+                            submitBtn.textContent = 'Tạo Tài Khoản Người Dùng (Lưu Cloud)';
+                            return;
+                        }
+
+                        const newCloudUser = {
+                            username: userInp,
+                            password: passInp,
+                            role: 'USER',
+                            is_locked: false,
+                            updated_at: new Date().toISOString()
+                        };
+                        const { error: insErr } = await supabaseClient
+                            .from('app_users')
+                            .insert(newCloudUser);
+
+                        if (insErr) throw insErr;
+                        cloudUsersCache.unshift(newCloudUser);
+                    } catch (e) {
+                        errEl.textContent = 'Lỗi tạo tài khoản Cloud: ' + (e.message || 'Thử lại');
+                        errEl.classList.remove('hidden');
+                        submitBtn.textContent = 'Tạo Tài Khoản Người Dùng (Lưu Cloud)';
+                        return;
+                    }
+                } else {
+                    const existing = registeredUsers.find(u => u.username === userInp);
+                    if (existing) {
+                        errEl.textContent = 'Tài khoản này đã tồn tại!';
+                        errEl.classList.remove('hidden');
+                        submitBtn.textContent = 'Tạo Tài Khoản Người Dùng (Lưu Cloud)';
+                        return;
+                    }
+                    registeredUsers.push({ username: userInp, password: passInp, role: 'USER', is_locked: false });
+                    localStorage.setItem('vietmap_registered_users_v1', JSON.stringify(registeredUsers));
                 }
-                const newUser = { username: userInp, password: passInp, role: 'USER' };
-                registeredUsers.push(newUser);
-                localStorage.setItem('vietmap_registered_users_v1', JSON.stringify(registeredUsers));
 
                 currentAuthSession = { loggedIn: true, username: userInp, role: 'USER' };
                 localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
                 updatePermissionUI();
                 closeAuthModal();
-                speakVietnamese('Đăng ký thành công tài khoản người dùng. Bạn có thể tìm kiếm lộ trình dẫn đường.');
+                showRealtimeToast(`☁️ Đã tạo tài khoản ${userInp} (Chế độ Chỉ tìm lộ trình)`);
+                speakVietnamese('Đăng ký thành công tài khoản người dùng trên đám mây.');
                 return;
             }
 
+            // TRƯỜNG HỢP 2: ĐĂNG NHẬP (ƯU TIÊN KIỂM TRA TRÊN SUPABASE CLOUD ĐỂ ĐỒNG BỘ MỌI THIẾT BỊ)
+            if (isSupabaseConnected && supabaseClient) {
+                try {
+                    const { data: userRow, error } = await supabaseClient
+                        .from('app_users')
+                        .select('*')
+                        .eq('username', userInp)
+                        .maybeSingle();
+
+                    if (!error && userRow) {
+                        if (userRow.is_locked) {
+                            errEl.textContent = 'Tài khoản này đã bị Quản trị viên khóa!';
+                            errEl.classList.remove('hidden');
+                            submitBtn.textContent = 'Đăng Nhập Ngay';
+                            return;
+                        }
+                        if (userRow.password === passInp) {
+                            currentAuthSession = { loggedIn: true, username: userRow.username, role: userRow.role || 'USER' };
+                            localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
+                            updatePermissionUI();
+                            closeAuthModal();
+                            showRealtimeToast(`☁️ Đăng nhập thành công (${currentAuthSession.role})`);
+                            speakVietnamese(currentAuthSession.role === 'ADMIN'
+                                ? 'Xin chào Quản trị viên. Đã đồng bộ quyền điều khiển trên thiết bị này.'
+                                : 'Đăng nhập thành công chế độ người dùng.');
+                            return;
+                        } else {
+                            errEl.textContent = 'Mật khẩu không chính xác!';
+                            errEl.classList.remove('hidden');
+                            submitBtn.textContent = 'Đăng Nhập Ngay';
+                            return;
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            // Dự phòng khi chưa cấu hình Supabase hoặc bảng chưa có dòng Admin
             if (ADMIN_VALID_USERNAMES.includes(userInp)) {
                 if (passInp === adminSavedPassword) {
                     currentAuthSession = { loggedIn: true, username: userInp, role: 'ADMIN' };
                     localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
                     updatePermissionUI();
                     closeAuthModal();
-                    speakVietnamese('Xin chào Quản trị viên. Mọi chỉnh sửa của bạn sẽ tự động đồng bộ tới tất cả người dùng.');
+                    speakVietnamese('Xin chào Quản trị viên.');
                 } else {
                     errEl.textContent = 'Sai mật khẩu Quản trị viên (Admin)!';
                     errEl.classList.remove('hidden');
                 }
+                submitBtn.textContent = 'Đăng Nhập Ngay';
                 return;
             }
 
-            const foundUser = registeredUsers.find(u => u.username === userInp && u.password === passInp);
-            if (foundUser) {
-                currentAuthSession = { loggedIn: true, username: foundUser.username, role: 'USER' };
+            const foundLocal = registeredUsers.find(u => u.username === userInp && u.password === passInp);
+            if (foundLocal) {
+                currentAuthSession = { loggedIn: true, username: foundLocal.username, role: 'USER' };
                 localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
                 updatePermissionUI();
                 closeAuthModal();
-                speakVietnamese('Đăng nhập thành công chế độ người dùng.');
             } else {
                 errEl.textContent = 'Tài khoản không tồn tại hoặc sai mật khẩu!';
                 errEl.classList.remove('hidden');
             }
+            submitBtn.textContent = 'Đăng Nhập Ngay';
         }
 
-        function changeAdminPassword() {
+        // Đổi mật khẩu Admin và đồng bộ thẳng lên bảng app_users của Supabase
+        async function changeAdminPassword() {
             if (!isAdminUser()) return;
             const newPw = document.getElementById('new-admin-pass').value.trim();
             if (newPw.length < 4) {
@@ -938,15 +1133,141 @@
             }
             adminSavedPassword = newPw;
             localStorage.setItem('vietmap_admin_secret_pw', newPw);
+
+            if (isSupabaseConnected && supabaseClient) {
+                try {
+                    const updates = ADMIN_VALID_USERNAMES.map(u => ({
+                        username: u,
+                        password: newPw,
+                        role: 'ADMIN',
+                        is_locked: false,
+                        updated_at: new Date().toISOString()
+                    }));
+                    const { error } = await supabaseClient
+                        .from('app_users')
+                        .upsert(updates, { onConflict: 'username' });
+                    if (error) throw error;
+                    showRealtimeToast('☁️ Đã đồng bộ mật khẩu Admin mới lên Supabase Cloud!');
+                } catch (e) {
+                    alert('Đã lưu trên máy nhưng lỗi đồng bộ Cloud: ' + (e.message || ''));
+                }
+            }
             document.getElementById('new-admin-pass').value = '';
-            alert('Đã lưu mật khẩu Admin mới thành công!');
+            alert('Đã cập nhật mật khẩu Admin mới thành công trên toàn hệ thống!');
         }
 
-        function logoutAccount() {
+        function logoutAccount(silent = false) {
             currentAuthSession = { loggedIn: false, username: 'Khách', role: 'USER' };
             localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
             updatePermissionUI();
+            if (!silent) closeAuthModal();
+        }
+
+        // =========================================================================
+        // 1B. BẢNG QUẢN LÝ DANH SÁCH NGƯỜI DÙNG TRÊN SUPABASE (DÀNH CHO ADMIN)
+        // =========================================================================
+        async function openAdminUsersModal() {
+            if (!isAdminUser()) return;
             closeAuthModal();
+            const modal = document.getElementById('admin-users-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            await fetchAllCloudUsers();
+        }
+
+        function closeAdminUsersModal() {
+            const modal = document.getElementById('admin-users-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function fetchAllCloudUsers() {
+            if (!isAdminUser()) return;
+            const countLabel = document.getElementById('users-count-label');
+            if (isSupabaseConnected && supabaseClient) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('app_users')
+                        .select('*')
+                        .order('created_at', { ascending: false });
+                    if (!error && data) {
+                        cloudUsersCache = data;
+                    }
+                } catch (e) {}
+            }
+            renderAdminUsersList();
+            if (countLabel) {
+                countLabel.textContent = `Tổng cộng ${cloudUsersCache.length} tài khoản trên Supabase Cloud`;
+            }
+        }
+
+        function renderAdminUsersList() {
+            const container = document.getElementById('admin-users-list');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!cloudUsersCache || cloudUsersCache.length === 0) {
+                container.innerHTML = `<div class="text-xs text-slate-400 text-center py-6">Chưa có dữ liệu tài khoản trên Cloud. Hãy kết nối Supabase!</div>`;
+                return;
+            }
+
+            cloudUsersCache.forEach(u => {
+                const isAdm = u.role === 'ADMIN';
+                const row = document.createElement('div');
+                row.className = `p-3 rounded-2xl border ${u.is_locked ? 'bg-rose-950/40 border-rose-500/50' : 'bg-slate-800/90 border-slate-700'} flex items-center justify-between gap-2`;
+                row.innerHTML = `
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs font-extrabold text-white truncate">${u.username}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-black ${isAdm ? 'bg-amber-500 text-slate-950' : 'bg-blue-500/20 text-blue-300'}">${u.role}</span>
+                            ${u.is_locked ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white">ĐÃ KHÓA</span>' : ''}
+                        </div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">Mật khẩu: <b class="text-slate-200">${u.password}</b></div>
+                    </div>
+                    ${!isAdm ? `
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button onclick="toggleLockCloudUser('${u.username}', ${!u.is_locked})" class="px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold ${u.is_locked ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-slate-950'}">
+                                ${u.is_locked ? '🔓 Mở' : '🔒 Khóa'}
+                            </button>
+                            <button onclick="deleteCloudUser('${u.username}')" class="px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold bg-rose-600 text-white">
+                                🗑️ Xóa
+                            </button>
+                        </div>
+                    ` : '<span class="text-[10px] font-bold text-amber-300 shrink-0">Chủ App</span>'}
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        async function toggleLockCloudUser(username, lockState) {
+            if (!isAdminUser() || !supabaseClient) return;
+            try {
+                const { error } = await supabaseClient
+                    .from('app_users')
+                    .update({ is_locked: lockState, updated_at: new Date().toISOString() })
+                    .eq('username', username);
+                if (error) throw error;
+                showRealtimeToast(`☁️ Đã ${lockState ? 'khóa' : 'mở khóa'} tài khoản ${username}`);
+                await fetchAllCloudUsers();
+            } catch (e) {
+                alert('Lỗi cập nhật tài khoản: ' + (e.message || ''));
+            }
+        }
+
+        async function deleteCloudUser(username) {
+            if (!isAdminUser() || !supabaseClient) return;
+            if (!confirm(`Xác nhận xóa vĩnh viễn tài khoản người dùng "${username}"?`)) return;
+            try {
+                const { error } = await supabaseClient
+                    .from('app_users')
+                    .delete()
+                    .eq('username', username);
+                if (error) throw error;
+                showRealtimeToast(`☁️ Đã xóa tài khoản ${username}`);
+                await fetchAllCloudUsers();
+            } catch (e) {
+                alert('Lỗi xóa tài khoản: ' + (e.message || ''));
+            }
         }
 
         // =========================================================================
@@ -1080,7 +1401,6 @@
         // 3. CƠ SỞ DỮ LIỆU GỐC (53 BIỂN TỐC ĐỘ QCVN P.127 + CAMERA PHẠT NGUỘI)
         // =========================================================================
         const defaultMasterTrafficDB = [
-            // --- A. 26 BIỂN BÁO GIỚI HẠN TỐC ĐỘ CHUẨN QCVN 41:2019 (P.127) ---
             { id: 'spd-1', source: 'VIETMAP', lat: 18.65420, lng: 105.70110, type: 'speed', speedLimit: 50, title: 'Biển Tốc Độ Tối Đa 50 km/h - Đường Nguyễn Du (Vào TP. Vinh)' },
             { id: 'spd-2', source: 'VIETMAP', lat: 18.66380, lng: 105.69140, type: 'speed', speedLimit: 50, title: 'Biển Tốc Độ Tối Đa 50 km/h - Đường Lê Duẩn (Cạnh ĐH Vinh)' },
             { id: 'spd-3', source: 'VIETMAP', lat: 18.67080, lng: 105.68320, type: 'speed', speedLimit: 50, title: 'Biển Tốc Độ Tối Đa 50 km/h - Đường Trần Phú (Công viên Trung Tâm)' },
@@ -1108,7 +1428,6 @@
             { id: 'spd-25', source: 'VIETMAP', lat: 18.68800, lng: 105.52500, type: 'speed', speedLimit: 50, title: 'Biển Hạn Chế 50 km/h - Khu Di Tích Kim Liên - Nam Đàn (QL46)' },
             { id: 'spd-26', source: 'VIETMAP', lat: 18.76500, lng: 105.59800, type: 'speed', speedLimit: 90, title: 'Biển Tốc Độ Tối Đa 90 km/h - Cao Tốc Bắc Nam (Đoạn Nghi Đồng - Hưng Tây)' },
 
-            // --- B. 22 CAMERA PHẠT NGUỘI ĐÚNG TÂM NÚT GIAO ---
             { id: 'cam-1', source: 'VIETMAP', lat: 18.65892, lng: 105.69558, type: 'camera', speedLimit: 50, title: 'Cam Phạt Nguội Ngã Tư Đại Học Vinh (Lê Duẩn - Trường Thi)' },
             { id: 'cam-2', source: 'VIETMAP', lat: 18.66725, lng: 105.67522, type: 'camera', speedLimit: 40, title: 'Cam Phạt Nguội Ngã Tư Chợ Vinh (Cao Thắng - Hồng Bàng)' },
             { id: 'cam-3', source: 'VIETMAP', lat: 18.67495, lng: 105.68085, type: 'camera', speedLimit: 50, title: 'Cam Phạt Nguội Ngã Tư Quang Trung - Lê Hồng Phong (Vincom)' },
@@ -1132,7 +1451,6 @@
             { id: 'cam-21', source: 'VIETMAP', lat: 19.14680, lng: 105.63720, type: 'camera', speedLimit: 50, title: 'Cam Phạt Nguội Thị Trấn Cầu Giát - Quỳnh Lưu' },
             { id: 'cam-22', source: 'VIETMAP', lat: 19.24852, lng: 105.71582, type: 'camera', speedLimit: 50, title: 'Cam Giám Sát Trạm Hoàng Mai - QL1A Bắc Nghệ An' },
 
-            // --- C. 5 ĐIỂM CAMERA CCTV TRỰC TUYẾN & SỞ GTVT ---
             { id: 'cctv-1', source: 'CCTV', lat: 18.65925, lng: 105.69510, type: 'cctv', speedLimit: 50, title: 'CCTV Trực Tuyến Nút Giao Đại Học Vinh', flow: 'Đông phương tiện', avgSpeed: 35 },
             { id: 'cctv-2', source: 'CCTV', lat: 18.68650, lng: 105.67320, type: 'cctv', speedLimit: 50, title: 'CCTV Trực Tuyến Ngã Tư Ga Vinh', flow: 'Thông thoáng', avgSpeed: 42 },
             { id: 'cctv-3', source: 'CCTV', lat: 18.78200, lng: 105.58900, type: 'cctv', speedLimit: 80, title: 'CCTV ITS Cửa Hầm Thần Vũ - Cao Tốc Bắc Nam', flow: 'Lưu thông tốt', avgSpeed: 75 },
@@ -1230,7 +1548,6 @@
                 const canDrag = isAdminUser() && adminMapEditMode;
                 const marker = L.marker([item.lat, item.lng], { icon, draggable: canDrag });
 
-                // KHI ADMIN KÉO THẢ BIỂN BÁO / CAMERA -> ĐẨY TỌA ĐỘ MỚI LÊN SUPABASE REALTIME CHO TẤT CẢ MỌI MÁY
                 if (canDrag) {
                     marker.on('dragend', async (ev) => {
                         if (!isAdminUser()) return;
@@ -1277,7 +1594,7 @@
         }
 
         // =========================================================================
-        // 4. CÔNG CỤ CHỈNH SỬA DÀNH RIÊNG CHO ADMIN (ĐỒNG BỘ TRỰC TIẾP LÊN SUPABASE)
+        // 4. CÔNG CỤ CHỈNH SỬA BẢN ĐỒ DÀNH RIÊNG CHO ADMIN
         // =========================================================================
         function toggleAdminMapEditMode() {
             if (!isAdminUser()) {
@@ -1697,7 +2014,7 @@
         }
 
         // =========================================================================
-        // 8. TÌM KIẾM LỘ TRÌNH & DẪN ĐƯỜNG TURN-BY-TURN (DÀNH CHO MỌI NGƯỜI DÙNG)
+        // 8. TÌM KIẾM LỘ TRÌNH & DẪN ĐƯỜNG TURN-BY-TURN
         // =========================================================================
         async function searchAndPromptDestination() {
             const query = document.getElementById('dest-search-input').value.trim();
