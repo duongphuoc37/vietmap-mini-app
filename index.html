@@ -3,11 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Vietmap Pro Live - Admin & Speed Signs</title>
+    <title>Vietmap Pro Live - Supabase Realtime Cloud</title>
+    <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-webapp.js"></script>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Supabase JS SDK v2 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
         :root {
@@ -38,7 +43,7 @@
         }
         .qcvn-pole { width: 3px; height: 8px; background: #cbd5e1; border-radius: 1px; }
 
-        /* Biển tròn giới hạn tốc độ chuẩn QCVN P.127 trên bản đồ */
+        /* Biển tròn giới hạn tốc độ chuẩn QCVN P.127 */
         .speed-sign-circle {
             width: 38px; height: 38px; border-radius: 50%;
             background: #ffffff; border: 4.5px solid #dc2626;
@@ -88,6 +93,54 @@
 
     <div id="overspeed-vignette" class="hidden"></div>
 
+    <!-- THÔNG BÁO ĐỒNG BỘ REALTIME TỪ SUPABASE CLOUD -->
+    <div id="realtime-toast" class="fixed top-3 left-1/2 -translate-x-1/2 z-[4000] hidden pointer-events-none">
+        <div class="bg-emerald-950/95 border border-emerald-400 text-emerald-200 px-3.5 py-2 rounded-2xl shadow-2xl flex items-center gap-2 text-xs font-extrabold">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span id="realtime-toast-text">☁️ Đã đồng bộ dữ liệu thời gian thực từ Admin!</span>
+        </div>
+    </div>
+
+    <!-- MODAL CẤU HÌNH SUPABASE CLOUD (CHỈ ADMIN MỚI MỞ ĐƯỢC) -->
+    <div id="supabase-config-modal" class="fixed inset-0 z-[3600] bg-slate-950/90 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-emerald-500/60 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">☁️</span>
+                    <div>
+                        <h3 class="text-sm font-extrabold text-emerald-300">Kết Nối Supabase Realtime</h3>
+                        <p class="text-[10px] text-slate-400">Đồng bộ vị trí Cam & Biển cho mọi máy</p>
+                    </div>
+                </div>
+                <button onclick="closeSupabaseConfigModal()" class="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-bold">✕</button>
+            </div>
+
+            <div class="space-y-2 text-xs">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">Supabase Project URL</label>
+                    <input id="sb-url-input" type="text" placeholder="https://xxxx.supabase.co" class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase">Supabase Anon Public Key</label>
+                    <input id="sb-key-input" type="password" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500">
+                </div>
+            </div>
+
+            <div id="sb-connection-status" class="bg-slate-800/80 border border-slate-700 rounded-xl p-2.5 text-[11px] text-slate-300">
+                Trạng thái: Đang kiểm tra kết nối đám mây...
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <button onclick="saveAndConnectSupabase()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-lg">
+                    🔗 Lưu & Kết Nối Supabase Ngay
+                </button>
+                <button onclick="pushAllLocalPointsToSupabase()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs">
+                    ⬆️ Đẩy Toàn Bộ 53 Điểm Chuẩn Lên Supabase Cloud
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL ĐĂNG NHẬP & ĐĂNG KÝ TÀI KHOẢN (PHÂN QUYỀN ADMIN VS USER) -->
     <div id="auth-modal" class="fixed inset-0 z-[3500] bg-slate-950/90 backdrop-blur-md hidden items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl">
@@ -102,13 +155,11 @@
                 <button onclick="closeAuthModal()" class="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-bold">✕</button>
             </div>
 
-            <!-- Chuyển tab Đăng nhập / Tạo tài khoản -->
             <div class="flex bg-slate-800 p-1 rounded-2xl mb-3">
                 <button id="auth-tab-login" onclick="switchAuthTab('login')" class="flex-1 py-1.5 rounded-xl text-xs font-extrabold bg-blue-600 text-white">Đăng Nhập</button>
                 <button id="auth-tab-register" onclick="switchAuthTab('register')" class="flex-1 py-1.5 rounded-xl text-xs font-extrabold text-slate-300">Tạo Tài Khoản (User)</button>
             </div>
 
-            <!-- Form Đăng nhập / Đăng ký -->
             <div id="auth-form-box" class="space-y-2.5">
                 <div>
                     <label class="text-[10px] font-bold text-slate-400 uppercase">Tên tài khoản hoặc Số điện thoại</label>
@@ -119,7 +170,7 @@
                     <input id="auth-password" type="password" placeholder="Nhập mật khẩu..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
                 </div>
                 <div id="auth-register-note" class="hidden bg-slate-800/80 border border-slate-700 rounded-xl p-2.5 text-[11px] text-amber-300">
-                    ℹ️ Tài khoản tạo mới là <b>Tài khoản Người Dùng</b>: Bạn được sử dụng bản đồ, nhận cảnh báo tốc độ và tìm kiếm lộ trình, nhưng <b>không được phép chỉnh sửa dữ liệu của ứng dụng</b>.
+                    ℹ️ Tài khoản tạo mới là <b>Tài khoản Người Dùng</b>: Chỉ được tìm kiếm lộ trình và nhận cảnh báo, <b>không được phép chỉnh sửa biển báo/camera của ứng dụng</b>.
                 </div>
                 <div id="auth-error-msg" class="hidden text-[11px] font-bold text-rose-400 text-center"></div>
                 <button id="auth-submit-btn" onclick="handleAuthSubmit()" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-lg">
@@ -127,13 +178,11 @@
                 </button>
             </div>
 
-            <!-- Khung quản lý khi đang đăng nhập -->
             <div id="auth-logged-box" class="hidden space-y-3 mt-2">
                 <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-3 text-xs space-y-1">
                     <div>Tài khoản: <b id="profile-name" class="text-white">--</b></div>
                     <div>Cấp quyền: <span id="profile-role-badge" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">--</span></div>
                 </div>
-                <!-- Đổi mật khẩu dành riêng cho Admin -->
                 <div id="admin-change-pass-box" class="hidden bg-slate-800/60 border border-amber-500/40 rounded-2xl p-3 space-y-2">
                     <div class="text-[11px] font-extrabold text-amber-300">👑 Đổi mật khẩu Admin của bạn</div>
                     <input id="new-admin-pass" type="password" placeholder="Nhập mật khẩu Admin mới..." class="w-full bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl text-xs text-white">
@@ -146,7 +195,7 @@
         </div>
     </div>
 
-    <!-- MODAL THÊM / CHỈNH SỬA ĐIỂM TRÊN BẢN ĐỒ (CHỈ ADMIN MỚI MỞ ĐƯỢC) -->
+    <!-- MODAL THÊM / CHỈNH SỬA ĐIỂM TRÊN BẢN ĐỒ (CHỈ ADMIN) -->
     <div id="admin-point-modal" class="fixed inset-0 z-[3400] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-4">
         <div class="bg-slate-900 border border-amber-500/60 rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-3">
             <div class="flex items-center justify-between">
@@ -198,7 +247,7 @@
                     🗑️ Xóa
                 </button>
                 <button onclick="savePointByAdmin()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 px-3 rounded-xl text-xs">
-                    💾 Lưu Thay Đổi
+                    ☁️ Lưu & Đồng Bộ Mọi Máy
                 </button>
             </div>
         </div>
@@ -262,7 +311,7 @@
             <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
                 <div>
                     <h3 class="text-sm font-extrabold text-white">📋 Hệ Thống Biển Tốc Độ • Phạt Nguội • CCTV</h3>
-                    <p class="text-[11px] text-slate-400" id="signs-count-subtitle">Tự động cập nhật lúc 08:00 AM hàng ngày</p>
+                    <p class="text-[11px] text-slate-400" id="signs-count-subtitle">Đồng bộ thời gian thực qua Supabase Cloud</p>
                 </div>
                 <button onclick="toggleSignsModal(false)" class="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold">Đóng ✕</button>
             </div>
@@ -285,7 +334,7 @@
             <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-3xl">📡</div>
             <h2 class="text-lg font-extrabold text-white mb-1">Kết Nối Định Vị GPS Thực Tế</h2>
             <p class="text-xs text-slate-300 leading-relaxed mb-4">
-                Tích hợp đầy đủ <b>Biển giới hạn tốc độ QCVN 41:2019</b>, <b>Camera phạt nguội chuẩn vị trí</b>, <b>CCTV trực tuyến</b> và xoay bản đồ theo hướng xe chạy.
+                Tích hợp <b>Biển giới hạn tốc độ QCVN 41:2019</b>, <b>Camera phạt nguội chuẩn vị trí</b> và đồng bộ đám mây <b>Supabase Realtime</b> cho mọi người dùng.
             </p>
             <button onclick="requestDeviceGPSPermission()" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-3 px-4 rounded-2xl text-sm mb-2 shadow-lg">
                 📍 Bật GPS & Vào Bản Đồ Ngay
@@ -346,10 +395,13 @@
             </div>
         </div>
 
-        <!-- Dải công cụ nhanh (Có nút Đăng nhập / Quyền Admin) -->
+        <!-- Dải công cụ nhanh -->
         <div class="pointer-events-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
             <button id="auth-status-btn" onclick="openAuthModal()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-amber-500/25 border border-amber-400/70 text-amber-200 text-[11px] font-extrabold">
                 🔐 Đăng Nhập
+            </button>
+            <button id="cloud-badge-btn" onclick="handleCloudBadgeClick()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-slate-300 text-[11px] font-bold">
+                ☁️ Cloud: Chờ cấu hình
             </button>
             <button onclick="openDataHubWithFilter('SPEED')" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-rose-600/30 border border-rose-400/70 text-rose-200 text-[11px] font-bold">
                 🔴 Biển Tốc Độ (<span id="speed-count-pill">0</span>)
@@ -363,15 +415,12 @@
             <button id="heading-mode-btn" onclick="toggleMapHeadingMode()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-purple-600/30 border border-purple-500/60 text-purple-200 text-[11px] font-bold">
                 🧭 Hướng: Xe Chạy
             </button>
-            <button id="live-traffic-btn" onclick="toggleLiveTrafficFlow()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-emerald-600/30 border border-emerald-500/70 text-emerald-200 text-[11px] font-bold">
-                🚦 Traffic: Bật
-            </button>
             <button id="map-mode-btn" onclick="cycleMapLayer()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-blue-600/30 border border-blue-500/60 text-blue-200 text-[11px] font-bold">
                 🛰️ Vệ Tinh (HD)
             </button>
         </div>
 
-        <!-- Thanh tìm kiếm điểm đến (Ai cũng dùng được để tìm lộ trình) -->
+        <!-- Thanh tìm kiếm điểm đến -->
         <div class="pointer-events-auto flex gap-1.5">
             <input id="dest-search-input" type="text" placeholder="Tìm kiếm lộ trình (VD: Sân bay Vinh, Cửa Lò, Diễn Châu)..." class="flex-1 bg-slate-900/95 backdrop-blur-md border border-slate-700 px-3.5 py-2 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 shadow-lg" onkeydown="if(event.key==='Enter') searchAndPromptDestination()">
             <button onclick="searchAndPromptDestination()" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-lg shrink-0">🧭 Tìm Lộ Trình</button>
@@ -418,8 +467,8 @@
             <div class="flex items-center gap-2 min-w-0">
                 <span class="text-base">🛡️</span>
                 <div class="min-w-0">
-                    <div class="text-[11px] font-extrabold text-white truncate" id="footer-mode-title">Chế độ Người Dùng (Chỉ tìm lộ trình & Nhận cảnh báo)</div>
-                    <div class="text-[10px] text-slate-400 truncate">Chạm vào bản đồ để chọn điểm đến dẫn đường</div>
+                    <div class="text-[11px] font-extrabold text-white truncate" id="footer-mode-title">Chế độ Người Dùng (Đồng bộ Realtime • Chỉ tìm lộ trình)</div>
+                    <div class="text-[10px] text-slate-400 truncate">Mọi thay đổi từ Admin sẽ tự động cập nhật lên bản đồ</div>
                 </div>
             </div>
             <button onclick="openAuthModal()" class="shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-300 px-3 py-1.5 rounded-xl text-[11px] font-extrabold">
@@ -431,20 +480,20 @@
     <!-- THANH CÔNG CỤ QUẢN TRỊ VIÊN DƯỚI ĐÁY (CHỈ HIỆN KHI ĐĂNG NHẬP ĐÚNG ADMIN) -->
     <div id="admin-control-footer" class="fixed bottom-3 left-2.5 right-2.5 z-[1000] hidden flex-col gap-1.5 pointer-events-none">
         <div id="admin-edit-hint" class="hidden pointer-events-auto bg-amber-500 text-slate-950 px-3 py-1.5 rounded-xl text-[11px] font-black text-center shadow-lg">
-            🛠️ ĐANG BẬT CHẾ ĐỘ SỬA VỊ TRÍ: Giữ & kéo bất kỳ Camera/Biển báo nào tới vị trí đúng, hoặc chạm vào đường để thêm mới!
+            🛠️ ĐANG BẬT KÉO THẢ: Kéo bất kỳ Camera/Biển báo nào tới vị trí mới, mọi máy người dùng sẽ tự động nhảy theo!
         </div>
         <div class="pointer-events-auto bg-slate-900/95 backdrop-blur-md border-2 border-amber-500/80 rounded-2xl p-2 shadow-2xl flex items-center justify-between gap-1.5">
             <button id="admin-drag-toggle-btn" onclick="toggleAdminMapEditMode()" class="flex-1 bg-amber-500/20 hover:bg-amber-500/30 py-2 px-1.5 rounded-xl text-[11px] font-extrabold text-amber-300 border border-amber-500/50">
-                🛠️ Sửa Vị Trí Cam/Biển
+                🛠️ Kéo Thả Cam/Biển
             </button>
             <button onclick="adminAddPointAtCar('speed')" class="flex-1 bg-slate-800 hover:bg-slate-700 py-2 px-1 rounded-xl text-[11px] font-bold text-rose-300 border border-slate-700">
                 🔴 +Biển Tốc Độ
             </button>
             <button onclick="adminAddPointAtCar('camera')" class="flex-1 bg-slate-800 hover:bg-slate-700 py-2 px-1 rounded-xl text-[11px] font-bold text-amber-300 border border-slate-700">
-                📷 +Cam Phạt Nguội
+                📷 +Phạt Nguội
             </button>
-            <button onclick="resetDefaultDatabaseByAdmin()" class="bg-slate-800 hover:bg-slate-700 py-2 px-2 rounded-xl text-[10px] font-bold text-slate-300 border border-slate-700" title="Khôi phục tọa độ gốc">
-                🔄 Gốc
+            <button onclick="openSupabaseConfigModal()" class="bg-emerald-600/30 hover:bg-emerald-600/40 py-2 px-2.5 rounded-xl text-[11px] font-extrabold text-emerald-300 border border-emerald-500/60">
+                ☁️ Cloud
             </button>
         </div>
     </div>
@@ -453,27 +502,269 @@
 
     <script>
         // =========================================================================
+        // 0. CẤU HÌNH SUPABASE REALTIME CLOUD (ĐỒNG BỘ MỌI MÁY NGƯỜI DÙNG)
+        // =========================================================================
+        // Điền trực tiếp Project URL và Anon Key của bạn vào 2 dòng dưới đây để mọi máy tự động kết nối:
+        const DEFAULT_SUPABASE_URL = ''; 
+        const DEFAULT_SUPABASE_KEY = '';
+
+        let supabaseUrl = localStorage.getItem('vietmap_sb_url') || DEFAULT_SUPABASE_URL;
+        let supabaseKey = localStorage.getItem('vietmap_sb_key') || DEFAULT_SUPABASE_KEY;
+        let supabaseClient = null;
+        let realtimeChannel = null;
+        let isSupabaseConnected = false;
+
+        function showRealtimeToast(message) {
+            const toast = document.getElementById('realtime-toast');
+            const textEl = document.getElementById('realtime-toast-text');
+            if (!toast || !textEl) return;
+            textEl.textContent = message;
+            toast.classList.remove('hidden');
+            clearTimeout(window.__toastTimer);
+            window.__toastTimer = setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3500);
+        }
+
+        // Chuyển đổi định dạng dòng dữ liệu giữa Supabase (snake_case) và App (camelCase)
+        function mapRowFromSupabase(row) {
+            return {
+                id: String(row.id),
+                source: row.source || 'VIETMAP',
+                lat: parseFloat(row.lat),
+                lng: parseFloat(row.lng),
+                type: row.type || 'speed',
+                speedLimit: parseInt(row.speed_limit || row.speedLimit || 50),
+                title: row.title || 'Điểm cảnh báo',
+                flow: row.flow || 'Thông thoáng',
+                avgSpeed: parseInt(row.avg_speed || row.avgSpeed || 40)
+            };
+        }
+
+        function mapPointToSupabaseRow(pt) {
+            return {
+                id: String(pt.id),
+                source: pt.source || 'VIETMAP',
+                lat: parseFloat(pt.lat),
+                lng: parseFloat(pt.lng),
+                type: pt.type || 'speed',
+                speed_limit: parseInt(pt.speedLimit || 50),
+                title: pt.title || 'Điểm cảnh báo',
+                flow: pt.flow || 'Thông thoáng',
+                avg_speed: parseInt(pt.avgSpeed || 40),
+                updated_at: new Date().toISOString()
+            };
+        }
+
+        async function initSupabaseRealtimeConnection() {
+            const cloudBadge = document.getElementById('cloud-badge-btn');
+            const statusBox = document.getElementById('sb-connection-status');
+
+            if (!supabaseUrl || !supabaseKey || !window.supabase) {
+                isSupabaseConnected = false;
+                if (cloudBadge) {
+                    cloudBadge.textContent = '☁️ Cloud: Chế độ Offline';
+                    cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-slate-300 text-[11px] font-bold';
+                }
+                if (statusBox) statusBox.textContent = 'Chưa nhập Supabase URL & Anon Key. Đang lưu tạm trên bộ nhớ máy.';
+                return;
+            }
+
+            try {
+                supabaseClient = window.supabase.createClient(supabaseUrl.trim(), supabaseKey.trim());
+
+                // 1. Tải toàn bộ danh sách điểm từ bảng traffic_points trên Supabase
+                const { data, error } = await supabaseClient
+                    .from('traffic_points')
+                    .select('*');
+
+                if (error) throw error;
+
+                isSupabaseConnected = true;
+                if (cloudBadge) {
+                    cloudBadge.textContent = '☁️ Cloud: Đang Đồng Bộ Live';
+                    cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-emerald-600/30 border border-emerald-400 text-emerald-200 text-[11px] font-extrabold';
+                }
+                if (statusBox) {
+                    statusBox.innerHTML = `<span class="text-emerald-400 font-bold">✅ Đã kết nối Supabase Realtime thành công!</span> (Hiện có ${data ? data.length : 0} điểm trên Cloud).`;
+                }
+
+                // Nếu trên Cloud đã có dữ liệu -> Cập nhật ngay cho máy người dùng
+                if (data && data.length > 0) {
+                    trafficDatabase = data.map(mapRowFromSupabase);
+                    saveTrafficDatabaseLocal();
+                    renderAllTrafficMarkers();
+                    evaluateTrafficAlertsAndNavigation();
+                } else if (isAdminUser()) {
+                    // Nếu bảng trên Cloud mới tạo còn trống và người mở là Admin -> Tự động đẩy 53 điểm gốc lên Cloud
+                    await pushAllLocalPointsToSupabase(true);
+                }
+
+                // 2. Đăng ký kênh WebSocket Realtime để lắng nghe mọi thao tác Thêm / Sửa / Kéo thả / Xóa từ Admin
+                if (realtimeChannel) {
+                    supabaseClient.removeChannel(realtimeChannel);
+                }
+                realtimeChannel = supabaseClient
+                    .channel('public:traffic_points_live')
+                    .on(
+                        'postgres_changes',
+                        { event: '*', schema: 'public', table: 'traffic_points' },
+                        (payload) => {
+                            handleIncomingRealtimeChange(payload);
+                        }
+                    )
+                    .subscribe();
+
+            } catch (err) {
+                isSupabaseConnected = false;
+                if (cloudBadge) {
+                    cloudBadge.textContent = '☁️ Cloud: Lỗi Kết Nối';
+                    cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-rose-600/30 border border-rose-400 text-rose-200 text-[11px] font-bold';
+                }
+                if (statusBox) {
+                    statusBox.innerHTML = `<span class="text-rose-400 font-bold">❌ Lỗi:</span> ${err.message || 'Kiểm tra lại URL/Key hoặc chạy lệnh SQL tạo bảng traffic_points.'}`;
+                }
+            }
+        }
+
+        // Xử lý sự kiện Realtime gửi về tất cả các máy đang mở App
+        function handleIncomingRealtimeChange(payload) {
+            const { eventType, new: newRow, old: oldRow } = payload;
+
+            if (eventType === 'INSERT' || eventType === 'UPDATE') {
+                const updatedPoint = mapRowFromSupabase(newRow);
+                const existingIdx = trafficDatabase.findIndex(x => x.id === updatedPoint.id);
+                if (existingIdx !== -1) {
+                    trafficDatabase[existingIdx] = updatedPoint;
+                } else {
+                    trafficDatabase.push(updatedPoint);
+                }
+                showRealtimeToast(`☁️ Admin vừa cập nhật: ${updatedPoint.title}`);
+            } else if (eventType === 'DELETE' && oldRow && oldRow.id) {
+                trafficDatabase = trafficDatabase.filter(x => x.id !== String(oldRow.id));
+                showRealtimeToast(`☁️ Admin vừa xóa 1 điểm cảnh báo trên bản đồ`);
+            }
+
+            saveTrafficDatabaseLocal();
+            renderAllTrafficMarkers();
+            evaluateTrafficAlertsAndNavigation();
+        }
+
+        // Hàm đẩy 1 điểm vừa Thêm / Sửa / Kéo thả lên Supabase Cloud
+        async function syncSinglePointToSupabase(point) {
+            if (!isSupabaseConnected || !supabaseClient || !isAdminUser()) return;
+            try {
+                const row = mapPointToSupabaseRow(point);
+                const { error } = await supabaseClient
+                    .from('traffic_points')
+                    .upsert(row, { onConflict: 'id' });
+                if (error) throw error;
+                showRealtimeToast(`☁️ Đã đồng bộ "${point.title}" cho tất cả người dùng!`);
+            } catch (e) {
+                alert('Lỗi đồng bộ lên Supabase: ' + (e.message || 'Kiểm tra kết nối Cloud'));
+            }
+        }
+
+        // Hàm xóa 1 điểm trên Supabase Cloud
+        async function deleteSinglePointFromSupabase(pointId) {
+            if (!isSupabaseConnected || !supabaseClient || !isAdminUser()) return;
+            try {
+                const { error } = await supabaseClient
+                    .from('traffic_points')
+                    .delete()
+                    .eq('id', String(pointId));
+                if (error) throw error;
+                showRealtimeToast('☁️ Đã xóa điểm cảnh báo trên toàn hệ thống!');
+            } catch (e) {}
+        }
+
+        // Hàm đẩy toàn bộ danh sách điểm hiện tại lên Supabase Cloud (1 chạm)
+        async function pushAllLocalPointsToSupabase(silent = false) {
+            if (!isAdminUser()) {
+                alert('Chỉ Admin mới có quyền đẩy dữ liệu lên Supabase Cloud!');
+                return;
+            }
+            if (!supabaseClient) {
+                alert('Vui lòng nhập Supabase URL & Key trước!');
+                return;
+            }
+            try {
+                const rows = trafficDatabase.map(mapPointToSupabaseRow);
+                const { error } = await supabaseClient
+                    .from('traffic_points')
+                    .upsert(rows, { onConflict: 'id' });
+                if (error) throw error;
+                if (!silent) {
+                    showRealtimeToast(`☁️ Đã đẩy thành công ${rows.length} điểm lên Supabase Cloud!`);
+                    alert(`Đã đồng bộ toàn bộ ${rows.length} Biển tốc độ & Camera phạt nguội lên Supabase Cloud cho mọi người dùng!`);
+                }
+            } catch (e) {
+                if (!silent) alert('Lỗi khi đẩy dữ liệu: ' + (e.message || 'Hãy chắc chắn bạn đã chạy lệnh SQL tạo bảng traffic_points'));
+            }
+        }
+
+        function handleCloudBadgeClick() {
+            if (isAdminUser()) {
+                openSupabaseConfigModal();
+            } else {
+                showRealtimeToast(isSupabaseConnected
+                    ? '☁️ Máy của bạn đang nhận dữ liệu thời gian thực từ Admin!'
+                    : 'ℹ️ Chế độ Người Dùng: Tự động nhận lộ trình & cảnh báo.');
+            }
+        }
+
+        function openSupabaseConfigModal() {
+            if (!isAdminUser()) {
+                alert('Chỉ Quản trị viên (Admin) mới được phép cấu hình máy chủ Supabase!');
+                return;
+            }
+            document.getElementById('sb-url-input').value = supabaseUrl;
+            document.getElementById('sb-key-input').value = supabaseKey;
+            const modal = document.getElementById('supabase-config-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSupabaseConfigModal() {
+            const modal = document.getElementById('supabase-config-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function saveAndConnectSupabase() {
+            if (!isAdminUser()) return;
+            const urlVal = document.getElementById('sb-url-input').value.trim();
+            const keyVal = document.getElementById('sb-key-input').value.trim();
+            if (!urlVal || !keyVal) {
+                alert('Vui lòng nhập cả Supabase Project URL và Anon Key!');
+                return;
+            }
+            supabaseUrl = urlVal;
+            supabaseKey = keyVal;
+            localStorage.setItem('vietmap_sb_url', supabaseUrl);
+            localStorage.setItem('vietmap_sb_key', supabaseKey);
+            await initSupabaseRealtimeConnection();
+        }
+
+        // =========================================================================
         // 1. HỆ THỐNG ĐĂNG NHẬP & PHÂN QUYỀN (CHỈ ADMIN ĐƯỢC CHỈNH SỬA APP)
         // =========================================================================
         const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
         if (tg) { tg.expand(); if (tg.setHeaderColor) tg.setHeaderColor('#090d16'); }
 
-        // Cấu hình Tài khoản Chủ App (Admin) duy nhất
         const ADMIN_VALID_USERNAMES = ['admin', '0354674561', 'phuocadmin'];
         let adminSavedPassword = localStorage.getItem('vietmap_admin_secret_pw') || 'admin123';
 
-        // Danh sách tài khoản Người dùng đã đăng ký (Chỉ có quyền tìm lộ trình)
         let registeredUsers = [];
         try {
             const savedUsers = localStorage.getItem('vietmap_registered_users_v1');
             if (savedUsers) registeredUsers = JSON.parse(savedUsers);
         } catch (e) {}
 
-        // Trạng thái phiên đăng nhập hiện tại
         let currentAuthSession = {
             loggedIn: false,
             username: 'Khách',
-            role: 'USER' // 'ADMIN' | 'USER'
+            role: 'USER'
         };
         try {
             const savedSession = localStorage.getItem('vietmap_active_session_v1');
@@ -481,7 +772,7 @@
         } catch (e) {}
 
         let authModalTab = 'login';
-        let adminMapEditMode = false; // Khi bật: Admin được kéo thả biển báo/camera & chạm bản đồ để thêm điểm
+        let adminMapEditMode = false;
 
         function isAdminUser() {
             return currentAuthSession && currentAuthSession.loggedIn && currentAuthSession.role === 'ADMIN';
@@ -523,8 +814,7 @@
             const modal = document.getElementById('auth-modal');
             const formBox = document.getElementById('auth-form-box');
             const loggedBox = document.getElementById('auth-logged-box');
-            const errEl = document.getElementById('auth-error-msg');
-            errEl.classList.add('hidden');
+            document.getElementById('auth-error-msg').classList.add('hidden');
 
             if (currentAuthSession.loggedIn) {
                 formBox.classList.add('hidden');
@@ -533,7 +823,7 @@
                 const badge = document.getElementById('profile-role-badge');
                 const adminPassBox = document.getElementById('admin-change-pass-box');
                 if (isAdminUser()) {
-                    badge.textContent = '👑 QUẢN TRỊ VIÊN (TOÀN QUYỀN CHỈNH SỬA APP)';
+                    badge.textContent = '👑 QUẢN TRỊ VIÊN (TOÀN QUYỀN CHỈNH SỬA & ĐỒNG BỘ CLOUD)';
                     badge.className = 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px]';
                     adminPassBox.classList.remove('hidden');
                 } else {
@@ -589,7 +879,6 @@
             }
 
             if (authModalTab === 'register') {
-                // Không cho phép người khác đăng ký trùng tên tài khoản Admin
                 if (ADMIN_VALID_USERNAMES.includes(userInp)) {
                     errEl.textContent = 'Tên tài khoản này thuộc quyền Quản trị viên, không thể đăng ký!';
                     errEl.classList.remove('hidden');
@@ -601,7 +890,6 @@
                     errEl.classList.remove('hidden');
                     return;
                 }
-                // Tạo tài khoản mới với quyền cố định là USER (Không được chỉnh sửa app)
                 const newUser = { username: userInp, password: passInp, role: 'USER' };
                 registeredUsers.push(newUser);
                 localStorage.setItem('vietmap_registered_users_v1', JSON.stringify(registeredUsers));
@@ -614,14 +902,13 @@
                 return;
             }
 
-            // Xử lý Đăng nhập
             if (ADMIN_VALID_USERNAMES.includes(userInp)) {
                 if (passInp === adminSavedPassword) {
                     currentAuthSession = { loggedIn: true, username: userInp, role: 'ADMIN' };
                     localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
                     updatePermissionUI();
                     closeAuthModal();
-                    speakVietnamese('Xin chào Quản trị viên. Đã mở khóa toàn quyền chỉnh sửa bản đồ và biển báo.');
+                    speakVietnamese('Xin chào Quản trị viên. Mọi chỉnh sửa của bạn sẽ tự động đồng bộ tới tất cả người dùng.');
                 } else {
                     errEl.textContent = 'Sai mật khẩu Quản trị viên (Admin)!';
                     errEl.classList.remove('hidden');
@@ -719,13 +1006,6 @@
             }
         }
 
-        function toggleLiveTrafficFlow() {
-            liveTrafficOverlayEnabled = !liveTrafficOverlayEnabled;
-            const btn = document.getElementById('live-traffic-btn');
-            btn.textContent = liveTrafficOverlayEnabled ? '🚦 Traffic: Bật' : '🚦 Traffic: Tắt';
-            refreshMapBaseAndTrafficLayers();
-        }
-
         function cycleMapLayer() {
             const btn = document.getElementById('map-mode-btn');
             if (currentMapMode === 'satellite') {
@@ -756,7 +1036,6 @@
 
         function applyMapRotation() {
             const root = document.documentElement;
-            // Khi Admin đang bật chế độ kéo thả sửa vị trí -> Tạm trả về hướng Bắc để kéo thả chính xác
             if (autoFollowVehicle && mapHeadingMode === 'vehicle' && !adminMapEditMode) {
                 root.style.setProperty('--map-rotation', `-${vehicleState.heading}deg`);
                 root.style.setProperty('--marker-rotation', `${vehicleState.heading}deg`);
@@ -798,10 +1077,10 @@
         }
 
         // =========================================================================
-        // 3. CƠ SỞ DỮ LIỆU ĐẦY ĐỦ: BIỂN GIỚI HẠN TỐC ĐỘ (P.127) + CAMERA CHUẨN TỌA ĐỘ
+        // 3. CƠ SỞ DỮ LIỆU GỐC (53 BIỂN TỐC ĐỘ QCVN P.127 + CAMERA PHẠT NGUỘI)
         // =========================================================================
         const defaultMasterTrafficDB = [
-            // --- A. HỆ THỐNG BIỂN BÁO GIỚI HẠN TỐC ĐỘ CHUẨN QCVN 41:2019 (P.127) ---
+            // --- A. 26 BIỂN BÁO GIỚI HẠN TỐC ĐỘ CHUẨN QCVN 41:2019 (P.127) ---
             { id: 'spd-1', source: 'VIETMAP', lat: 18.65420, lng: 105.70110, type: 'speed', speedLimit: 50, title: 'Biển Tốc Độ Tối Đa 50 km/h - Đường Nguyễn Du (Vào TP. Vinh)' },
             { id: 'spd-2', source: 'VIETMAP', lat: 18.66380, lng: 105.69140, type: 'speed', speedLimit: 50, title: 'Biển Tốc Độ Tối Đa 50 km/h - Đường Lê Duẩn (Cạnh ĐH Vinh)' },
             { id: 'spd-3', source: 'VIETMAP', lat: 18.67080, lng: 105.68320, type: 'speed', speedLimit: 50, title: 'Biển Tốc Độ Tối Đa 50 km/h - Đường Trần Phú (Công viên Trung Tâm)' },
@@ -829,7 +1108,7 @@
             { id: 'spd-25', source: 'VIETMAP', lat: 18.68800, lng: 105.52500, type: 'speed', speedLimit: 50, title: 'Biển Hạn Chế 50 km/h - Khu Di Tích Kim Liên - Nam Đàn (QL46)' },
             { id: 'spd-26', source: 'VIETMAP', lat: 18.76500, lng: 105.59800, type: 'speed', speedLimit: 90, title: 'Biển Tốc Độ Tối Đa 90 km/h - Cao Tốc Bắc Nam (Đoạn Nghi Đồng - Hưng Tây)' },
 
-            // --- B. HỆ THỐNG CAMERA PHẠT NGUỘI ĐÃ CHUẨN HÓA ĐÚNG TÂM NÚT GIAO ---
+            // --- B. 22 CAMERA PHẠT NGUỘI ĐÚNG TÂM NÚT GIAO ---
             { id: 'cam-1', source: 'VIETMAP', lat: 18.65892, lng: 105.69558, type: 'camera', speedLimit: 50, title: 'Cam Phạt Nguội Ngã Tư Đại Học Vinh (Lê Duẩn - Trường Thi)' },
             { id: 'cam-2', source: 'VIETMAP', lat: 18.66725, lng: 105.67522, type: 'camera', speedLimit: 40, title: 'Cam Phạt Nguội Ngã Tư Chợ Vinh (Cao Thắng - Hồng Bàng)' },
             { id: 'cam-3', source: 'VIETMAP', lat: 18.67495, lng: 105.68085, type: 'camera', speedLimit: 50, title: 'Cam Phạt Nguội Ngã Tư Quang Trung - Lê Hồng Phong (Vincom)' },
@@ -853,7 +1132,7 @@
             { id: 'cam-21', source: 'VIETMAP', lat: 19.14680, lng: 105.63720, type: 'camera', speedLimit: 50, title: 'Cam Phạt Nguội Thị Trấn Cầu Giát - Quỳnh Lưu' },
             { id: 'cam-22', source: 'VIETMAP', lat: 19.24852, lng: 105.71582, type: 'camera', speedLimit: 50, title: 'Cam Giám Sát Trạm Hoàng Mai - QL1A Bắc Nghệ An' },
 
-            // --- C. CAMERA CCTV TRỰC TUYẾN & PHÂN LUỒNG SỞ GTVT ---
+            // --- C. 5 ĐIỂM CAMERA CCTV TRỰC TUYẾN & SỞ GTVT ---
             { id: 'cctv-1', source: 'CCTV', lat: 18.65925, lng: 105.69510, type: 'cctv', speedLimit: 50, title: 'CCTV Trực Tuyến Nút Giao Đại Học Vinh', flow: 'Đông phương tiện', avgSpeed: 35 },
             { id: 'cctv-2', source: 'CCTV', lat: 18.68650, lng: 105.67320, type: 'cctv', speedLimit: 50, title: 'CCTV Trực Tuyến Ngã Tư Ga Vinh', flow: 'Thông thoáng', avgSpeed: 42 },
             { id: 'cctv-3', source: 'CCTV', lat: 18.78200, lng: 105.58900, type: 'cctv', speedLimit: 80, title: 'CCTV ITS Cửa Hầm Thần Vũ - Cao Tốc Bắc Nam', flow: 'Lưu thông tốt', avgSpeed: 75 },
@@ -862,9 +1141,9 @@
         ];
 
         let trafficDatabase = [];
-        function loadTrafficDatabase() {
+        function loadTrafficDatabaseLocal() {
             try {
-                const savedDB = localStorage.getItem('vietmap_master_db_v4');
+                const savedDB = localStorage.getItem('vietmap_master_db_v5');
                 if (savedDB) {
                     trafficDatabase = JSON.parse(savedDB);
                     return;
@@ -872,18 +1151,16 @@
             } catch (e) {}
             trafficDatabase = JSON.parse(JSON.stringify(defaultMasterTrafficDB));
         }
-        function saveTrafficDatabase() {
+        function saveTrafficDatabaseLocal() {
             try {
-                localStorage.setItem('vietmap_master_db_v4', JSON.stringify(trafficDatabase));
+                localStorage.setItem('vietmap_master_db_v5', JSON.stringify(trafficDatabase));
             } catch (e) {}
         }
-        loadTrafficDatabase();
+        loadTrafficDatabaseLocal();
 
         const signsLayerGroup = L.layerGroup().addTo(map);
 
-        // Vẽ Biển Tốc Độ Tròn Chuẩn QCVN P.127 & Camera kèm huy hiệu tốc độ
         function buildQCVNSignSVG(item) {
-            // 1. Biển giới hạn tốc độ P.127 (Hình tròn viền đỏ nền trắng chữ đen nổi bật)
             if (item.type === 'speed') {
                 return `
                 <div class="qcvn-marker-wrap">
@@ -891,7 +1168,6 @@
                     <div class="qcvn-pole"></div>
                 </div>`;
             }
-            // 2. Camera phạt nguội (Có gắn kèm biển tròn tốc độ nhỏ ở góc phải trên)
             if (item.type === 'camera') {
                 return `
                 <div class="qcvn-marker-wrap">
@@ -905,7 +1181,6 @@
                     <div class="qcvn-pole"></div>
                 </div>`;
             }
-            // 3. Camera CCTV Live
             if (item.type === 'cctv' || item.source === 'CCTV') {
                 return `
                 <div class="qcvn-marker-wrap">
@@ -916,7 +1191,6 @@
                     <div class="qcvn-pole"></div>
                 </div>`;
             }
-            // 4. Trạm thu phí VETC
             if (item.type === 'toll') {
                 return `
                 <div class="qcvn-marker-wrap">
@@ -927,7 +1201,6 @@
                     <div class="qcvn-pole"></div>
                 </div>`;
             }
-            // 5. Cảnh báo Sở GTVT / Khu dân cư
             return `
             <div class="qcvn-marker-wrap">
                 <div class="relative w-9 h-9 rounded-xl bg-amber-950 border-2 border-amber-400 flex flex-col items-center justify-center shadow-lg">
@@ -954,25 +1227,26 @@
                     iconAnchor: [21, 46]
                 });
 
-                // Chỉ cho phép kéo thả (draggable) khi Admin đang bật Chế độ Sửa Vị Trí
                 const canDrag = isAdminUser() && adminMapEditMode;
                 const marker = L.marker([item.lat, item.lng], { icon, draggable: canDrag });
 
+                // KHI ADMIN KÉO THẢ BIỂN BÁO / CAMERA -> ĐẨY TỌA ĐỘ MỚI LÊN SUPABASE REALTIME CHO TẤT CẢ MỌI MÁY
                 if (canDrag) {
-                    marker.on('dragend', (ev) => {
+                    marker.on('dragend', async (ev) => {
                         if (!isAdminUser()) return;
                         const newPos = ev.target.getLatLng();
                         item.lat = parseFloat(newPos.lat.toFixed(5));
                         item.lng = parseFloat(newPos.lng.toFixed(5));
-                        saveTrafficDatabase();
-                        speakVietnamese(`Đã cập nhật vị trí mới cho ${item.title}`);
+                        saveTrafficDatabaseLocal();
+                        await syncSinglePointToSupabase(item);
+                        speakVietnamese(`Đã đồng bộ vị trí mới của ${item.title} lên đám mây.`);
                     });
                 }
 
                 const adminButtonsHTML = isAdminUser() ? `
                     <div style="display:flex; gap:4px; margin-top:6px; padding-top:6px; border-top:1px dashed #cbd5e1;">
                         <button onclick="openAdminEditPointModal('${item.id}')" style="flex:1; background:#f59e0b; color:#090d16; border:none; padding:5px; border-radius:6px; font-size:11px; font-weight:800; cursor:pointer;">
-                            🛠️ Sửa / Đổi Tốc Độ
+                            🛠️ Sửa / Đổi Tốc Độ (Cloud)
                         </button>
                     </div>
                 ` : '';
@@ -1003,7 +1277,7 @@
         }
 
         // =========================================================================
-        // 4. CÔNG CỤ CHỈNH SỬA DÀNH RIÊNG CHO ADMIN (NGƯỜI DÙNG BỊ KHÓA HOÀN TOÀN)
+        // 4. CÔNG CỤ CHỈNH SỬA DÀNH RIÊNG CHO ADMIN (ĐỒNG BỘ TRỰC TIẾP LÊN SUPABASE)
         // =========================================================================
         function toggleAdminMapEditMode() {
             if (!isAdminUser()) {
@@ -1015,13 +1289,13 @@
             const hint = document.getElementById('admin-edit-hint');
 
             if (adminMapEditMode) {
-                btn.textContent = '✅ Đang Sửa Vị Trí (Bấm Để Khóa)';
+                btn.textContent = '✅ Đang Kéo Thả (Bấm Khóa)';
                 btn.className = 'flex-1 bg-amber-400 text-slate-950 py-2 px-1.5 rounded-xl text-[11px] font-black border border-white';
                 hint.classList.remove('hidden');
-                applyMapRotation(); // Đưa bản đồ về hướng Bắc để Admin dễ kéo thả
-                speakVietnamese('Đã bật chế độ chỉnh sửa vị trí. Bạn có thể giữ và kéo các biển báo hoặc chạm vào bản đồ để thêm mới.');
+                applyMapRotation();
+                speakVietnamese('Đã bật chế độ kéo thả. Khi bạn thả tay, vị trí mới sẽ tự động cập nhật cho tất cả người dùng.');
             } else {
-                btn.textContent = '🛠️ Sửa Vị Trí Cam/Biển';
+                btn.textContent = '🛠️ Kéo Thả Cam/Biển';
                 btn.className = 'flex-1 bg-amber-500/20 hover:bg-amber-500/30 py-2 px-1.5 rounded-xl text-[11px] font-extrabold text-amber-300 border border-amber-500/50';
                 hint.classList.add('hidden');
                 applyMapRotation();
@@ -1035,7 +1309,7 @@
             const pt = trafficDatabase.find(x => x.id === pointId);
             if (!pt) return;
 
-            document.getElementById('admin-modal-heading').textContent = '🛠️ Admin: Sửa Tọa Độ / Biển Báo';
+            document.getElementById('admin-modal-heading').textContent = '🛠️ Admin: Sửa Điểm Cảnh Báo (Cloud)';
             document.getElementById('edit-point-id').value = pt.id;
             document.getElementById('edit-point-lat').value = pt.lat;
             document.getElementById('edit-point-lng').value = pt.lng;
@@ -1052,7 +1326,7 @@
         function openAdminNewPointModalAtCoords(lat, lng, defaultType = 'speed') {
             if (!isAdminUser()) return;
             map.closePopup();
-            document.getElementById('admin-modal-heading').textContent = '➕ Admin: Thêm Biển Báo / Camera Mới';
+            document.getElementById('admin-modal-heading').textContent = '➕ Admin: Thêm Biển / Camera Mới';
             document.getElementById('edit-point-id').value = '';
             document.getElementById('edit-point-lat').value = parseFloat(lat.toFixed(5));
             document.getElementById('edit-point-lng').value = parseFloat(lng.toFixed(5));
@@ -1077,7 +1351,7 @@
             modal.classList.remove('flex');
         }
 
-        function savePointByAdmin() {
+        async function savePointByAdmin() {
             if (!isAdminUser()) return;
             const id = document.getElementById('edit-point-id').value;
             const lat = parseFloat(document.getElementById('edit-point-lat').value);
@@ -1091,6 +1365,7 @@
                 return;
             }
 
+            let targetPoint = null;
             if (id) {
                 const idx = trafficDatabase.findIndex(x => x.id === id);
                 if (idx !== -1) {
@@ -1099,44 +1374,39 @@
                         lat, lng, type, speedLimit, title,
                         source: type === 'cctv' ? 'CCTV' : (type === 'gtvt_work' ? 'GTVT' : 'VIETMAP')
                     };
+                    targetPoint = trafficDatabase[idx];
                 }
             } else {
-                trafficDatabase.push({
+                targetPoint = {
                     id: 'adm-' + Date.now(),
                     source: type === 'cctv' ? 'CCTV' : (type === 'gtvt_work' ? 'GTVT' : 'VIETMAP'),
                     lat, lng, type, speedLimit, title
-                });
+                };
+                trafficDatabase.push(targetPoint);
             }
 
-            saveTrafficDatabase();
+            saveTrafficDatabaseLocal();
             renderAllTrafficMarkers();
             closeAdminPointModal();
-            speakVietnamese('Đã lưu dữ liệu điểm cảnh báo thành công.');
+
+            if (targetPoint) {
+                await syncSinglePointToSupabase(targetPoint);
+            }
+            speakVietnamese('Đã lưu và đồng bộ điểm cảnh báo lên đám mây.');
         }
 
-        function deletePointByAdmin() {
+        async function deletePointByAdmin() {
             if (!isAdminUser()) return;
             const id = document.getElementById('edit-point-id').value;
             if (!id) return;
             trafficDatabase = trafficDatabase.filter(x => x.id !== id);
-            saveTrafficDatabase();
+            saveTrafficDatabaseLocal();
             renderAllTrafficMarkers();
             closeAdminPointModal();
-            speakVietnamese('Đã xóa điểm cảnh báo khỏi bản đồ.');
+            await deleteSinglePointFromSupabase(id);
+            speakVietnamese('Đã xóa điểm cảnh báo trên toàn hệ thống.');
         }
 
-        function resetDefaultDatabaseByAdmin() {
-            if (!isAdminUser()) return;
-            if (!confirm('Khôi phục lại toàn bộ danh sách Biển tốc độ & Camera chuẩn mặc định?')) return;
-            trafficDatabase = JSON.parse(JSON.stringify(defaultMasterTrafficDB));
-            saveTrafficDatabase();
-            renderAllTrafficMarkers();
-            speakVietnamese('Đã khôi phục cơ sở dữ liệu gốc.');
-        }
-
-        // Sự kiện chạm vào bản đồ:
-        // - Nếu là Người dùng thường: Chỉ cho phép chọn điểm đến để Tìm lộ trình.
-        // - Nếu là Admin: Cho phép chọn Dẫn đường HOẶC Thêm Biển tốc độ / Camera ngay tại điểm vừa chạm.
         map.on('click', (e) => {
             const { lat, lng } = e.latlng;
             if (isAdminUser()) {
@@ -1144,7 +1414,7 @@
                     .setLatLng([lat, lng])
                     .setContent(`
                         <div style="color:#0f172a; font-family:sans-serif; min-width:195px;">
-                            <div style="font-size:11px; font-weight:900; color:#d97706;">👑 CÔNG CỤ QUẢN TRỊ VIÊN</div>
+                            <div style="font-size:11px; font-weight:900; color:#d97706;">👑 CÔNG CỤ QUẢN TRỊ VIÊN (CLOUD)</div>
                             <div style="font-size:11px; color:#475569; margin-bottom:6px;">Tọa độ: ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
                             <div style="display:flex; flex-direction:column; gap:5px;">
                                 <button onclick="openAdminNewPointModalAtCoords(${lat}, ${lng}, 'speed')" style="background:#dc2626; color:white; border:none; padding:6px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">
@@ -1427,7 +1697,7 @@
         }
 
         // =========================================================================
-        // 8. TÌM KIẾM LỘ TRÌNH & DẪN ĐƯỜNG TURN-BY-TURN (DÀNH CHO TẤT CẢ NGƯỜI DÙNG)
+        // 8. TÌM KIẾM LỘ TRÌNH & DẪN ĐƯỜNG TURN-BY-TURN (DÀNH CHO MỌI NGƯỜI DÙNG)
         // =========================================================================
         async function searchAndPromptDestination() {
             const query = document.getElementById('dest-search-input').value.trim();
@@ -1576,7 +1846,7 @@
                 }))
                 .sort((a, b) => a.dist - b.dist);
 
-            document.getElementById('signs-count-subtitle').textContent = `Hiển thị ${filtered.length} điểm cảnh báo (Sắp xếp từ gần đến xa xe bạn)`;
+            document.getElementById('signs-count-subtitle').textContent = `Hiển thị ${filtered.length} điểm cảnh báo (Đồng bộ Supabase Realtime)`;
 
             filtered.forEach(item => {
                 const distLabel = item.dist >= 1000 ? `${(item.dist / 1000).toFixed(1)} km` : `${item.dist} m`;
@@ -1629,6 +1899,7 @@
         window.addEventListener('load', () => {
             updatePermissionUI();
             renderAllTrafficMarkers();
+            initSupabaseRealtimeConnection();
             if (navigator.permissions && navigator.permissions.query) {
                 navigator.permissions.query({ name: 'geolocation' }).then(result => {
                     if (result.state === 'granted') { closeGPSModal(); startRealDeviceGPSTracking(true); }
