@@ -1,0 +1,30 @@
+name: Auto Update Traffic Data 8AM
+
+on:
+  schedule:
+    # 01:00 UTC = 08:00 AM giờ Việt Nam (UTC+7) hàng ngày
+    - cron: '0 1 * * *'
+  # Cho phép bạn bấm nút "Run workflow" chạy thử ngay trên điện thoại bất cứ lúc nào
+  workflow_dispatch:
+
+jobs:
+  sync-traffic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run traffic updater
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/update_traffic.py
