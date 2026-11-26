@@ -146,39 +146,44 @@
         </div>
     </div>
 
-    <!-- MODAL ĐĂNG NHẬP & ĐĂNG KÝ TÀI KHOẢN -->
-    <div id="auth-modal" class="fixed inset-0 z-[3500] bg-slate-950/90 backdrop-blur-md hidden items-center justify-center p-4">
+    <!-- MÀN HÌNH KHÓA ĐĂNG NHẬP & ĐĂNG KÝ TÀI KHOẢN (BẮT BUỘC) -->
+    <div id="auth-modal" class="fixed inset-0 z-[3800] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl">
             <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-2">
-                    <span class="text-2xl">🔐</span>
+                <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-xl">🔐</div>
                     <div>
-                        <h3 class="text-sm font-extrabold text-white">Tài Khoản Đám Mây</h3>
-                        <p class="text-[10px] text-slate-400">Admin: Chỉnh sửa • User: Chỉ tìm lộ trình</p>
+                        <h3 class="text-sm font-extrabold text-white" id="auth-modal-title">Vietmap Pro Live</h3>
+                        <p class="text-[10px] text-slate-400" id="auth-modal-subtitle">Đăng nhập hoặc tạo tài khoản để dùng bản đồ</p>
                     </div>
                 </div>
-                <button onclick="closeAuthModal()" class="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-bold">✕</button>
+                <button id="auth-close-btn" onclick="closeAuthModal()" class="hidden bg-slate-800 text-slate-300 px-2.5 py-1 rounded-xl text-xs font-bold">✕</button>
+            </div>
+
+            <div id="auth-cloud-pill" class="mb-3 px-2.5 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-[10px] font-bold text-slate-300 flex items-center justify-between">
+                <span>Trạng thái máy chủ Cloud:</span>
+                <span id="auth-cloud-status-text" class="text-amber-300">⏳ Đang kết nối...</span>
             </div>
 
             <div id="auth-tabs-bar" class="flex bg-slate-800 p-1 rounded-2xl mb-3">
                 <button id="auth-tab-login" onclick="switchAuthTab('login')" class="flex-1 py-1.5 rounded-xl text-xs font-extrabold bg-blue-600 text-white">Đăng Nhập</button>
-                <button id="auth-tab-register" onclick="switchAuthTab('register')" class="flex-1 py-1.5 rounded-xl text-xs font-extrabold text-slate-300">Tạo Tài Khoản (User)</button>
+                <button id="auth-tab-register" onclick="switchAuthTab('register')" class="flex-1 py-1.5 rounded-xl text-xs font-extrabold text-slate-300">Tạo Tài Khoản</button>
             </div>
 
             <div id="auth-form-box" class="space-y-2.5">
                 <div>
                     <label class="text-[10px] font-bold text-slate-400 uppercase">Tên tài khoản hoặc Số điện thoại</label>
-                    <input id="auth-username" type="text" placeholder="Nhập tài khoản..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
+                    <input id="auth-username" type="text" autocomplete="username" placeholder="VD: 0912345678 hoặc tên viết liền..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2.5 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
                 </div>
                 <div>
                     <label class="text-[10px] font-bold text-slate-400 uppercase">Mật khẩu</label>
-                    <input id="auth-password" type="password" placeholder="Nhập mật khẩu..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') handleAuthSubmit()">
+                    <input id="auth-password" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu (tối thiểu 4 ký tự)..." class="w-full mt-1 bg-slate-800 border border-slate-700 px-3 py-2.5 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') handleAuthSubmit()">
                 </div>
                 <div id="auth-register-note" class="hidden bg-slate-800/80 border border-slate-700 rounded-xl p-2.5 text-[11px] text-amber-300">
-                    ℹ️ Tài khoản tạo mới là <b>Người Dùng</b>: Chỉ được tìm kiếm lộ trình và nhận cảnh báo, không được chỉnh sửa biển báo/camera.
+                    ℹ️ Tài khoản tự đăng ký có quyền <b>Người Dùng</b>: Xem bản đồ, tìm lộ trình, nhận cảnh báo tốc độ & camera trực tiếp.
                 </div>
-                <div id="auth-error-msg" class="hidden text-[11px] font-bold text-rose-400 text-center"></div>
-                <button id="auth-submit-btn" onclick="handleAuthSubmit()" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-extrabold py-2.5 rounded-xl text-xs shadow-lg">Đăng Nhập Ngay</button>
+                <div id="auth-error-msg" class="hidden bg-rose-950/70 border border-rose-500/50 rounded-xl p-2 text-[11px] font-bold text-rose-300 text-center"></div>
+                <button id="auth-submit-btn" onclick="handleAuthSubmit()" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-extrabold py-3 rounded-xl text-xs shadow-lg">Đăng Nhập Vào Bản Đồ</button>
             </div>
 
             <div id="auth-logged-box" class="hidden space-y-3 mt-2">
@@ -322,8 +327,8 @@
         </div>
     </div>
 
-    <!-- MODAL CẤP QUYỀN GPS -->
-    <div id="gps-permission-modal" class="fixed inset-0 z-[3000] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <!-- MODAL CẤP QUYỀN GPS (CHỈ HIỆN SAU KHI ĐĂNG NHẬP) -->
+    <div id="gps-permission-modal" class="fixed inset-0 z-[3000] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl text-center">
             <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-3xl">📡</div>
             <h2 class="text-lg font-extrabold text-white mb-1">Kết Nối Định Vị GPS Thực Tế</h2>
@@ -381,7 +386,7 @@
         </div>
 
         <div class="pointer-events-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-            <button id="auth-status-btn" onclick="openAuthModal()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-amber-500/25 border border-amber-400/70 text-amber-200 text-[11px] font-extrabold">🔐 Đăng Nhập</button>
+            <button id="auth-status-btn" onclick="openAuthModal()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-amber-500/25 border border-amber-400/70 text-amber-200 text-[11px] font-extrabold">🔐 Tài Khoản</button>
             <button id="cloud-badge-btn" onclick="handleCloudBadgeClick()" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-slate-300 text-[11px] font-bold">☁️ Cloud: Chờ cấu hình</button>
             <button onclick="openDataHubWithFilter('SPEED')" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-rose-600/30 border border-rose-400/70 text-rose-200 text-[11px] font-bold">🔴 Biển (<span id="speed-count-pill">0</span>)</button>
             <button onclick="openDataHubWithFilter('CAMERA')" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-amber-600/30 border border-amber-400/70 text-amber-200 text-[11px] font-bold">📷 Cam (<span id="cam-count-pill">0</span>)</button>
@@ -434,11 +439,11 @@
             <div class="flex items-center gap-2 min-w-0">
                 <span class="text-base">🛡️</span>
                 <div class="min-w-0">
-                    <div class="text-[11px] font-extrabold text-white truncate" id="footer-mode-title">Chế độ Người Dùng (Đồng bộ Realtime • Chỉ tìm lộ trình)</div>
+                    <div class="text-[11px] font-extrabold text-white truncate" id="footer-mode-title">Chế độ Người Dùng (Đồng bộ Realtime)</div>
                     <div class="text-[10px] text-slate-400 truncate">Tự động cập nhật dữ liệu cảnh báo hàng ngày lúc 8:00 AM</div>
                 </div>
             </div>
-            <button onclick="openAuthModal()" class="shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-300 px-3 py-1.5 rounded-xl text-[11px] font-extrabold">👑 Admin</button>
+            <button onclick="openAuthModal()" class="shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-300 px-3 py-1.5 rounded-xl text-[11px] font-extrabold">👤 Tài Khoản</button>
         </div>
     </div>
 
@@ -471,6 +476,7 @@
         let realtimeChannel = null;
         let isSupabaseConnected = false;
         let cloudUsersCache = [];
+        let gpsPromptShownForSession = false;
 
         function escapeAttr(str) {
             return String(str || '').replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
@@ -515,12 +521,22 @@
             };
         }
 
+        function updateAuthCloudIndicator(state, text) {
+            const el = document.getElementById('auth-cloud-status-text');
+            if (!el) return;
+            el.textContent = text;
+            if (state === 'ok') el.className = 'text-emerald-400 font-extrabold';
+            else if (state === 'err') el.className = 'text-rose-400 font-extrabold';
+            else el.className = 'text-amber-300 font-bold';
+        }
+
         async function initSupabaseRealtimeConnection() {
             const cloudBadge = document.getElementById('cloud-badge-btn');
             const statusBox = document.getElementById('sb-connection-status');
 
             if (!supabaseUrl || !supabaseKey || !window.supabase) {
                 isSupabaseConnected = false;
+                updateAuthCloudIndicator('err', '⚠️ Offline (Chưa nhập Key)');
                 if (cloudBadge) {
                     cloudBadge.textContent = '☁️ Cloud: Offline';
                     cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 text-slate-300 text-[11px] font-bold';
@@ -530,11 +546,13 @@
             }
 
             try {
+                updateAuthCloudIndicator('wait', '⏳ Đang kết nối...');
                 supabaseClient = window.supabase.createClient(supabaseUrl.trim(), supabaseKey.trim());
                 const { data: pointsData, error: pointsErr } = await supabaseClient.from('traffic_points').select('*');
                 if (pointsErr) throw pointsErr;
 
                 isSupabaseConnected = true;
+                updateAuthCloudIndicator('ok', '🟢 Đã kết nối Realtime');
                 if (cloudBadge) {
                     cloudBadge.textContent = '☁️ Cloud: Live';
                     cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-emerald-600/30 border border-emerald-400 text-emerald-200 text-[11px] font-extrabold';
@@ -562,6 +580,7 @@
                     .subscribe();
             } catch (err) {
                 isSupabaseConnected = false;
+                updateAuthCloudIndicator('err', '❌ Lỗi kết nối Cloud');
                 if (cloudBadge) {
                     cloudBadge.textContent = '☁️ Cloud: Lỗi';
                     cloudBadge.className = 'shrink-0 px-2.5 py-1.5 rounded-xl bg-rose-600/30 border border-rose-400 text-rose-200 text-[11px] font-bold';
@@ -597,8 +616,14 @@
         function verifyCurrentSessionAgainstCloud() {
             if (!currentAuthSession.loggedIn || !cloudUsersCache.length) return;
             const me = cloudUsersCache.find(u => u.username === currentAuthSession.username);
-            if (!me) { logoutAccount(true); alert('Tài khoản đã bị Admin xóa!'); return; }
-            if (me.is_locked) { logoutAccount(true); alert('Tài khoản đã bị Admin khóa!'); return; }
+            if (!me) {
+                logoutAccount('Tài khoản của bạn đã bị Quản trị viên xóa khỏi hệ thống!');
+                return;
+            }
+            if (me.is_locked) {
+                logoutAccount('Tài khoản của bạn đã bị Quản trị viên tạm khóa!');
+                return;
+            }
             if (me.role !== currentAuthSession.role) {
                 currentAuthSession.role = me.role;
                 localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
@@ -613,10 +638,10 @@
                 const idx = trafficDatabase.findIndex(x => x.id === updatedPoint.id);
                 if (idx !== -1) trafficDatabase[idx] = updatedPoint;
                 else trafficDatabase.push(updatedPoint);
-                showRealtimeToast(`☁️ Cập nhật mới: ${updatedPoint.title}`);
+                if (currentAuthSession.loggedIn) showRealtimeToast(`☁️ Cập nhật mới: ${updatedPoint.title}`);
             } else if (eventType === 'DELETE' && oldRow && oldRow.id) {
                 trafficDatabase = trafficDatabase.filter(x => x.id !== String(oldRow.id));
-                showRealtimeToast('☁️ Đã xóa 1 điểm cảnh báo');
+                if (currentAuthSession.loggedIn) showRealtimeToast('☁️ Đã xóa 1 điểm cảnh báo');
             }
             saveTrafficDatabaseLocal();
             renderAllTrafficMarkers();
@@ -706,7 +731,7 @@
         }
 
         // =========================================================================
-        // 1. ĐĂNG NHẬP, PHÂN QUYỀN & QUẢN LÝ NGƯỜI DÙNG
+        // 1. ĐĂNG NHẬP BẮT BUỘC, TỰ ĐĂNG KÝ & QUẢN LÝ NGƯỜI DÙNG
         // =========================================================================
         const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
         if (tg) { tg.expand(); if (tg.setHeaderColor) tg.setHeaderColor('#090d16'); }
@@ -714,12 +739,49 @@
         const ADMIN_VALID_USERNAMES = ['admin', '0354674561', 'phuocadmin'];
         let adminSavedPassword = localStorage.getItem('vietmap_admin_secret_pw') || 'admin123';
         let registeredUsers = JSON.parse(localStorage.getItem('vietmap_registered_users_v1') || '[]');
-        let currentAuthSession = JSON.parse(localStorage.getItem('vietmap_active_session_v1') || '{"loggedIn":false,"username":"Khách","role":"USER"}');
+        let currentAuthSession = JSON.parse(localStorage.getItem('vietmap_active_session_v1') || '{"loggedIn":false,"username":"","role":"USER"}');
         let authModalTab = 'login';
         let adminMapEditMode = false;
 
         function isAdminUser() {
             return currentAuthSession && currentAuthSession.loggedIn && currentAuthSession.role === 'ADMIN';
+        }
+
+        function enforceAuthGate(forcedErrorMessage = '') {
+            if (!currentAuthSession || !currentAuthSession.loggedIn) {
+                openAuthModal(forcedErrorMessage);
+                return false;
+            }
+            const modal = document.getElementById('auth-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            return true;
+        }
+
+        function onAuthSuccess() {
+            updatePermissionUI();
+            const modal = document.getElementById('auth-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            setTimeout(() => map.invalidateSize(), 150);
+            checkAndPromptGPSAfterLogin();
+        }
+
+        function checkAndPromptGPSAfterLogin() {
+            if (!currentAuthSession.loggedIn || gpsPromptShownForSession) return;
+            gpsPromptShownForSession = true;
+            if (navigator.permissions && navigator.permissions.query) {
+                navigator.permissions.query({ name: 'geolocation' }).then(result => {
+                    if (result.state === 'granted') {
+                        closeGPSModal();
+                        startRealDeviceGPSTracking(true);
+                    } else {
+                        openGPSModal();
+                    }
+                }).catch(() => openGPSModal());
+            } else {
+                openGPSModal();
+            }
         }
 
         function updatePermissionUI() {
@@ -745,21 +807,29 @@
                 } else {
                     authBtn.textContent = '🔐 Đăng Nhập';
                     authBtn.className = "shrink-0 px-2.5 py-1.5 rounded-xl bg-amber-500/25 border border-amber-400/70 text-amber-200 text-[11px] font-extrabold";
-                    footerTitle.textContent = 'Chế độ Người Dùng: Chỉ tìm lộ trình & nhận cảnh báo';
+                    footerTitle.textContent = 'Vui lòng đăng nhập để sử dụng bản đồ';
                 }
             }
             if (typeof renderAllTrafficMarkers === 'function') renderAllTrafficMarkers();
         }
 
-        function openAuthModal() {
+        function openAuthModal(forcedErrorMessage = '') {
             const modal = document.getElementById('auth-modal');
+            const closeBtn = document.getElementById('auth-close-btn');
             const tabsBar = document.getElementById('auth-tabs-bar');
             const formBox = document.getElementById('auth-form-box');
             const loggedBox = document.getElementById('auth-logged-box');
-            document.getElementById('auth-error-msg').classList.add('hidden');
+            const errEl = document.getElementById('auth-error-msg');
+            const titleEl = document.getElementById('auth-modal-title');
+            const subtitleEl = document.getElementById('auth-modal-subtitle');
 
             if (currentAuthSession.loggedIn) {
-                tabsBar.classList.add('hidden'); formBox.classList.add('hidden'); loggedBox.classList.remove('hidden');
+                closeBtn.classList.remove('hidden');
+                titleEl.textContent = 'Thông Tin Tài Khoản';
+                subtitleEl.textContent = 'Quản lý phiên đăng nhập trên Cloud';
+                tabsBar.classList.add('hidden');
+                formBox.classList.add('hidden');
+                loggedBox.classList.remove('hidden');
                 document.getElementById('profile-name').textContent = currentAuthSession.username;
                 const badge = document.getElementById('profile-role-badge');
                 const adminPassBox = document.getElementById('admin-change-pass-box');
@@ -773,13 +843,25 @@
                     adminPassBox.classList.add('hidden');
                 }
             } else {
-                tabsBar.classList.remove('hidden'); formBox.classList.remove('hidden'); loggedBox.classList.add('hidden');
-                switchAuthTab('login');
+                closeBtn.classList.add('hidden');
+                titleEl.textContent = 'Vietmap Pro Live';
+                subtitleEl.textContent = 'Bắt buộc đăng nhập hoặc tạo tài khoản mới';
+                tabsBar.classList.remove('hidden');
+                formBox.classList.remove('hidden');
+                loggedBox.classList.add('hidden');
+                switchAuthTab(authModalTab || 'login');
+                if (forcedErrorMessage) {
+                    errEl.textContent = forcedErrorMessage;
+                    errEl.classList.remove('hidden');
+                } else {
+                    errEl.classList.add('hidden');
+                }
             }
             modal.classList.remove('hidden'); modal.classList.add('flex');
         }
 
         function closeAuthModal() {
+            if (!currentAuthSession || !currentAuthSession.loggedIn) return;
             const modal = document.getElementById('auth-modal');
             modal.classList.add('hidden'); modal.classList.remove('flex');
         }
@@ -795,11 +877,15 @@
             if (tab === 'login') {
                 loginBtn.className = 'flex-1 py-1.5 rounded-xl text-xs font-extrabold bg-blue-600 text-white';
                 regBtn.className = 'flex-1 py-1.5 rounded-xl text-xs font-extrabold text-slate-300';
-                regNote.classList.add('hidden'); submitBtn.textContent = 'Đăng Nhập Ngay';
+                regNote.classList.add('hidden');
+                submitBtn.textContent = 'Đăng Nhập Vào Bản Đồ';
+                submitBtn.className = 'w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-extrabold py-3 rounded-xl text-xs shadow-lg';
             } else {
                 regBtn.className = 'flex-1 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-600 text-white';
                 loginBtn.className = 'flex-1 py-1.5 rounded-xl text-xs font-extrabold text-slate-300';
-                regNote.classList.remove('hidden'); submitBtn.textContent = 'Tạo Tài Khoản Người Dùng';
+                regNote.classList.remove('hidden');
+                submitBtn.textContent = 'Tạo Tài Khoản & Vào Bản Đồ';
+                submitBtn.className = 'w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold py-3 rounded-xl text-xs shadow-lg';
             }
         }
 
@@ -810,36 +896,56 @@
             const submitBtn = document.getElementById('auth-submit-btn');
 
             if (!userInp || !passInp) {
-                errEl.textContent = 'Nhập đầy đủ tài khoản và mật khẩu!';
+                errEl.textContent = 'Vui lòng nhập đầy đủ tài khoản và mật khẩu!';
+                errEl.classList.remove('hidden'); return;
+            }
+            if (/\s/.test(userInp)) {
+                errEl.textContent = 'Tên tài khoản không được chứa dấu cách!';
                 errEl.classList.remove('hidden'); return;
             }
 
+            submitBtn.disabled = true;
             submitBtn.textContent = '⏳ Đang xác thực...';
+            errEl.classList.add('hidden');
+
+            const resetBtn = () => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = authModalTab === 'login' ? 'Đăng Nhập Vào Bản Đồ' : 'Tạo Tài Khoản & Vào Bản Đồ';
+            };
 
             if (authModalTab === 'register') {
-                if (ADMIN_VALID_USERNAMES.includes(userInp)) {
-                    errEl.textContent = 'Tên tài khoản thuộc quyền Admin!';
-                    errEl.classList.remove('hidden'); submitBtn.textContent = 'Tạo Tài Khoản Người Dùng'; return;
+                if (userInp.length < 3) {
+                    errEl.textContent = 'Tên tài khoản phải có ít nhất 3 ký tự!';
+                    errEl.classList.remove('hidden'); resetBtn(); return;
                 }
+                if (passInp.length < 4) {
+                    errEl.textContent = 'Mật khẩu phải có ít nhất 4 ký tự!';
+                    errEl.classList.remove('hidden'); resetBtn(); return;
+                }
+                if (ADMIN_VALID_USERNAMES.includes(userInp)) {
+                    errEl.textContent = 'Tên tài khoản này thuộc quyền Quản trị viên!';
+                    errEl.classList.remove('hidden'); resetBtn(); return;
+                }
+
                 if (isSupabaseConnected && supabaseClient) {
                     try {
                         const { data: existRow } = await supabaseClient.from('app_users').select('username').eq('username', userInp).maybeSingle();
                         if (existRow) {
-                            errEl.textContent = 'Tài khoản đã tồn tại!';
-                            errEl.classList.remove('hidden'); submitBtn.textContent = 'Tạo Tài Khoản Người Dùng'; return;
+                            errEl.textContent = 'Tài khoản này đã tồn tại, hãy chọn tên khác hoặc chuyển sang Đăng Nhập!';
+                            errEl.classList.remove('hidden'); resetBtn(); return;
                         }
                         const newCloudUser = { username: userInp, password: passInp, role: 'USER', is_locked: false, updated_at: new Date().toISOString() };
                         const { error: insErr } = await supabaseClient.from('app_users').insert(newCloudUser);
                         if (insErr) throw insErr;
                         cloudUsersCache.unshift(newCloudUser);
                     } catch (e) {
-                        errEl.textContent = 'Lỗi tạo tài khoản Cloud: ' + (e.message || '');
-                        errEl.classList.remove('hidden'); submitBtn.textContent = 'Tạo Tài Khoản Người Dùng'; return;
+                        errEl.textContent = 'Lỗi tạo tài khoản Cloud: ' + (e.message || 'Kiểm tra kết nối mạng');
+                        errEl.classList.remove('hidden'); resetBtn(); return;
                     }
                 } else {
                     if (registeredUsers.find(u => u.username === userInp)) {
                         errEl.textContent = 'Tài khoản đã tồn tại!';
-                        errEl.classList.remove('hidden'); submitBtn.textContent = 'Tạo Tài Khoản Người Dùng'; return;
+                        errEl.classList.remove('hidden'); resetBtn(); return;
                     }
                     registeredUsers.push({ username: userInp, password: passInp, role: 'USER', is_locked: false });
                     localStorage.setItem('vietmap_registered_users_v1', JSON.stringify(registeredUsers));
@@ -847,28 +953,33 @@
 
                 currentAuthSession = { loggedIn: true, username: userInp, role: 'USER' };
                 localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
-                updatePermissionUI(); closeAuthModal();
-                showRealtimeToast(`☁️ Đã tạo tài khoản ${userInp}`);
+                document.getElementById('auth-password').value = '';
+                resetBtn();
+                onAuthSuccess();
+                showRealtimeToast(`☁️ Tạo tài khoản ${userInp} thành công!`);
                 return;
             }
 
+            // CHẾ ĐỘ ĐĂNG NHẬP
             if (isSupabaseConnected && supabaseClient) {
                 try {
                     const { data: userRow, error } = await supabaseClient.from('app_users').select('*').eq('username', userInp).maybeSingle();
                     if (!error && userRow) {
                         if (userRow.is_locked) {
-                            errEl.textContent = 'Tài khoản đã bị Admin khóa!';
-                            errEl.classList.remove('hidden'); submitBtn.textContent = 'Đăng Nhập Ngay'; return;
+                            errEl.textContent = 'Tài khoản này đã bị Quản trị viên khóa!';
+                            errEl.classList.remove('hidden'); resetBtn(); return;
                         }
                         if (userRow.password === passInp) {
                             currentAuthSession = { loggedIn: true, username: userRow.username, role: userRow.role || 'USER' };
                             localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
-                            updatePermissionUI(); closeAuthModal();
-                            showRealtimeToast(`☁️ Đăng nhập thành công (${currentAuthSession.role})`);
+                            document.getElementById('auth-password').value = '';
+                            resetBtn();
+                            onAuthSuccess();
+                            showRealtimeToast(`☁️ Xin chào ${currentAuthSession.username} (${currentAuthSession.role})`);
                             return;
                         } else {
                             errEl.textContent = 'Sai mật khẩu!';
-                            errEl.classList.remove('hidden'); submitBtn.textContent = 'Đăng Nhập Ngay'; return;
+                            errEl.classList.remove('hidden'); resetBtn(); return;
                         }
                     }
                 } catch (e) {}
@@ -878,24 +989,27 @@
                 if (passInp === adminSavedPassword) {
                     currentAuthSession = { loggedIn: true, username: userInp, role: 'ADMIN' };
                     localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
-                    updatePermissionUI(); closeAuthModal();
+                    document.getElementById('auth-password').value = '';
+                    resetBtn();
+                    onAuthSuccess();
+                    return;
                 } else {
                     errEl.textContent = 'Sai mật khẩu Admin!';
-                    errEl.classList.remove('hidden');
+                    errEl.classList.remove('hidden'); resetBtn(); return;
                 }
-                submitBtn.textContent = 'Đăng Nhập Ngay'; return;
             }
 
             const foundLocal = registeredUsers.find(u => u.username === userInp && u.password === passInp);
             if (foundLocal) {
                 currentAuthSession = { loggedIn: true, username: foundLocal.username, role: 'USER' };
                 localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
-                updatePermissionUI(); closeAuthModal();
+                document.getElementById('auth-password').value = '';
+                resetBtn();
+                onAuthSuccess();
             } else {
-                errEl.textContent = 'Sai tài khoản hoặc mật khẩu!';
-                errEl.classList.remove('hidden');
+                errEl.textContent = 'Tài khoản chưa tồn tại hoặc sai mật khẩu!';
+                errEl.classList.remove('hidden'); resetBtn();
             }
-            submitBtn.textContent = 'Đăng Nhập Ngay';
         }
 
         async function changeAdminPassword() {
@@ -920,11 +1034,26 @@
             alert('Đã đổi mật khẩu Admin thành công!');
         }
 
-        function logoutAccount(silent = false) {
-            currentAuthSession = { loggedIn: false, username: 'Khách', role: 'USER' };
+        function logoutAccount(kickReason = '') {
+            if (watchPositionId !== null && navigator.geolocation) {
+                navigator.geolocation.clearWatch(watchPositionId);
+                watchPositionId = null;
+            }
+            gpsPromptShownForSession = false;
+            clearActiveRoute();
+            closeGPSModal();
+            closeAdminUsersModal();
+            closeSupabaseConfigModal();
+            closeAdminPointModal();
+            closeDestConfirmModal();
+            closeCCTVModal();
+            toggleSignsModal(false);
+
+            currentAuthSession = { loggedIn: false, username: '', role: 'USER' };
             localStorage.setItem('vietmap_active_session_v1', JSON.stringify(currentAuthSession));
             updatePermissionUI();
-            if (!silent) closeAuthModal();
+            authModalTab = 'login';
+            enforceAuthGate(typeof kickReason === 'string' ? kickReason : '');
         }
 
         async function openAdminUsersModal() {
@@ -1318,6 +1447,7 @@
         }
 
         map.on('click', (e) => {
+            if (!currentAuthSession.loggedIn) { enforceAuthGate(); return; }
             const { lat, lng } = e.latlng;
             if (isAdminUser()) {
                 L.popup().setLatLng([lat, lng]).setContent(`
@@ -1346,12 +1476,19 @@
         });
         const vehicleMarker = L.marker([vehicleState.lat, vehicleState.lng], { icon: carDivIcon, zIndexOffset: 1000 }).addTo(map);
 
-        function openGPSModal() { document.getElementById('gps-permission-modal').classList.remove('hidden'); }
-        function closeGPSModal() { document.getElementById('gps-permission-modal').classList.add('hidden'); }
+        function openGPSModal() {
+            if (!currentAuthSession.loggedIn) return;
+            const modal = document.getElementById('gps-permission-modal');
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+        }
+        function closeGPSModal() {
+            const modal = document.getElementById('gps-permission-modal');
+            modal.classList.add('hidden'); modal.classList.remove('flex');
+        }
         function requestDeviceGPSPermission() { closeGPSModal(); initAudioEngine(); startRealDeviceGPSTracking(true); }
 
         function startRealDeviceGPSTracking(centerImmediately = false) {
-            if (!navigator.geolocation) return;
+            if (!navigator.geolocation || !currentAuthSession.loggedIn) return;
             document.getElementById('gps-badge-btn').textContent = '⏳ Bắt GPS...';
             navigator.geolocation.getCurrentPosition(pos => handleIncomingRealGPSPosition(pos, true), () => {}, { enableHighAccuracy: true });
             if (watchPositionId !== null) navigator.geolocation.clearWatch(watchPositionId);
@@ -1361,6 +1498,7 @@
         }
 
         function handleIncomingRealGPSPosition(position, forceJump = false) {
+            if (!currentAuthSession.loggedIn) return;
             const { latitude, longitude, speed, heading, accuracy } = position.coords;
             const now = position.timestamp || Date.now();
 
@@ -1409,7 +1547,7 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
         }
         function speakVietnamese(text, force = false) {
-            if (!voiceEnabled || !('speechSynthesis' in window)) return;
+            if (!voiceEnabled || !currentAuthSession.loggedIn || !('speechSynthesis' in window)) return;
             if (force) window.speechSynthesis.cancel();
             const utter = new SpeechSynthesisUtterance(text);
             utter.lang = 'vi-VN'; utter.rate = 1.05;
@@ -1711,10 +1849,8 @@
             updatePermissionUI();
             renderAllTrafficMarkers();
             initSupabaseRealtimeConnection();
-            if (navigator.permissions && navigator.permissions.query) {
-                navigator.permissions.query({ name: 'geolocation' }).then(result => {
-                    if (result.state === 'granted') { closeGPSModal(); startRealDeviceGPSTracking(true); }
-                }).catch(() => {});
+            if (enforceAuthGate()) {
+                checkAndPromptGPSAfterLogin();
             }
         });
     </script>
